@@ -1,3 +1,7 @@
+# Secrets: never commit
 .env
 *.secret
 secrets/
+
+# macOS clutter
+.DS_Store
