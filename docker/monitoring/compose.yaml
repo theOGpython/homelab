@@ -1,0 +1,90 @@
+# =============================================================================
+# Monitoring stack: Airtel ODU usage -> Prometheus -> Grafana
+#
+#   odu-exporter  polls the Huawei ODU every 60s (local network only, no
+#                 internet data used) and exposes metrics on :9877
+#   prometheus    stores the history (2 years by default)
+#   grafana       dashboards, at https://grafana.<tailnet>.ts.net
+#
+# Usage (inside the "docker" LXC):
+#   ./setup-env.sh            # creates .env (never committed)
+#   docker compose up -d --build
+# =============================================================================
+
+name: monitoring
+
+services:
+
+  odu-exporter:
+    build: ./odu-exporter
+    image: local/odu-exporter:1.0
+    container_name: odu-exporter
+    environment:
+      ODU_URL: ${ODU_URL}
+      ODU_USERNAME: ${ODU_USERNAME:-admin}
+      ODU_PASSWORD: ${ODU_PASSWORD}
+      POLL_SECONDS: 60
+      TZ: ${TZ}
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROM_RETENTION:-2y}
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus      # named volume: avoids permission issues
+    ports:
+      - 9090:9090                        # LAN access for debugging
+    depends_on:
+      - odu-exporter
+    restart: unless-stopped
+
+  ts-grafana:
+    image: tailscale/tailscale:stable
+    hostname: grafana
+    container_name: ts-grafana
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: grafana
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/grafana:/var/lib/tailscale
+      - ./tailscale/grafana.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 3000:3000                        # LAN access
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    network_mode: "service:ts-grafana"
+    environment:
+      TZ: ${TZ}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/home-internet.json
+    volumes:
+      - grafana-data:/var/lib/grafana    # named volume: avoids permission issues
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - ts-grafana
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
