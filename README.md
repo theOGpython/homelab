@@ -52,7 +52,7 @@ Two layers:
 | Jellyfin | Movies & TV streaming | `http://192.168.3.201:8096` | `https://jellyfin.<tailnet>.ts.net` |
 | Seerr | Family request page | `http://192.168.3.201:5055` | `https://requests.<tailnet>.ts.net` |
 | Audiobookshelf | Audiobooks & stories | `http://192.168.3.201:13378` | `https://books.<tailnet>.ts.net` |
-| qBittorrent | Downloads (behind VPN) | `:8080` | `https://arr.<tailnet>.ts.net:8080` |
+| qBittorrent | Downloads (VPN optional) | `:8080` | `https://arr.<tailnet>.ts.net:8080` |
 | Prowlarr | Indexer manager | `:9696` | `https://arr.<tailnet>.ts.net:9696` |
 | Sonarr | TV automation | `:8989` | `https://arr.<tailnet>.ts.net:8989` |
 | Radarr | Movie automation | `:7878` | `https://arr.<tailnet>.ts.net:7878` |
@@ -167,24 +167,34 @@ docker compose up -d
 docker compose ps
 ```
 
-Check the VPN is working (should show the VPN server's IP, **not** your Airtel IP):
-
-```bash
-docker exec gluetun wget -qO- https://ipinfo.io/ip
-```
 
 ### 7. First-run wiring
 
 | Where | Setting |
 |---|---|
-| qBittorrent | Temporary admin password is in `docker logs qbittorrent`; change it immediately. Save path: `/data/torrents` |
-| Prowlarr | Add indexers. FlareSolverr at `http://localhost:8191`. Apps: Sonarr `http://localhost:8989`, Radarr `http://localhost:7878` |
-| Sonarr / Radarr | Download client: qBittorrent at `localhost:8080`. Root folders: `/data/media/tv`, `/data/media/movies` |
-| Bazarr | Connect to Sonarr/Radarr at `localhost` |
+| qBittorrent | Temporary admin password is in `docker logs qbittorrent`; change it immediately. Save path: `/data/torrents`. Set speed limits (data cap) |
+| Prowlarr | Add indexers. FlareSolverr at `http://flaresolverr:8191`. Apps: Sonarr `http://sonarr:8989`, Radarr `http://radarr:7878` (Prowlarr server: `http://prowlarr:9696`) |
+| Sonarr / Radarr | Download client: qBittorrent, host `qbittorrent`, port `8080`. Root folders: `/data/media/tv`, `/data/media/movies` |
+| Bazarr | Sonarr at `sonarr:8989`, Radarr at `radarr:7878` |
 | Jellyfin | Libraries: `/data/media/movies`, `/data/media/tv`. Dashboard → Playback → Transcoding → **Intel QuickSync (QSV)** |
-| Seerr | Jellyfin at `http://ts-jellyfin:8096`; Sonarr/Radarr at `http://gluetun:8989` / `:7878` |
+| Seerr | Jellyfin at `http://ts-jellyfin:8096`; Sonarr `http://sonarr:8989`, Radarr `http://radarr:7878` |
 
-Apps behind gluetun share its network, so they find each other at `localhost`. Apps outside it reach them at `gluetun:<port>`.
+Apps reach each other by **container name**. These addresses stay the same when the VPN is switched on.
+
+### Adding the VPN later
+
+`compose.vpn.yaml` routes qBittorrent through gluetun. To enable it, add to `.env`:
+
+```bash
+COMPOSE_FILE=compose.yaml:compose.vpn.yaml
+VPN_SERVICE_PROVIDER=...      # plus WireGuard key/address for your provider
+```
+
+Then `docker compose up -d`. gluetun takes over the `qbittorrent` network name, so no app settings change. Check that qBittorrent now shows the VPN's IP, **not** your Airtel IP:
+
+```bash
+docker exec qbittorrent wget -qO- https://ipinfo.io/ip
+```
 
 ### Updating
 
