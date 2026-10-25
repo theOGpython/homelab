@@ -20,35 +20,35 @@
     "${TS_CERT_DOMAIN}:8080": {
       "Handlers": {
         "/": {
-          "Proxy": "http://gluetun:8080"
+          "Proxy": "http://qbittorrent:8080"
         }
       }
     },
     "${TS_CERT_DOMAIN}:9696": {
       "Handlers": {
         "/": {
-          "Proxy": "http://gluetun:9696"
+          "Proxy": "http://prowlarr:9696"
         }
       }
     },
     "${TS_CERT_DOMAIN}:8989": {
       "Handlers": {
         "/": {
-          "Proxy": "http://gluetun:8989"
+          "Proxy": "http://sonarr:8989"
         }
       }
     },
     "${TS_CERT_DOMAIN}:7878": {
       "Handlers": {
         "/": {
-          "Proxy": "http://gluetun:7878"
+          "Proxy": "http://radarr:7878"
         }
       }
     },
     "${TS_CERT_DOMAIN}:6767": {
       "Handlers": {
         "/": {
-          "Proxy": "http://gluetun:6767"
+          "Proxy": "http://bazarr:6767"
         }
       }
     }

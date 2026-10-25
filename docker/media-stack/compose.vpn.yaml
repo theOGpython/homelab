@@ -1,0 +1,47 @@
+# =============================================================================
+# VPN add-on: routes qBittorrent's traffic through gluetun.
+#
+# Enable by adding this line to .env (plus your VPN credentials):
+#   COMPOSE_FILE=compose.yaml:compose.vpn.yaml
+# then run:  docker compose up -d
+#
+# gluetun takes the network alias "qbittorrent", so Sonarr, Radarr and the
+# Tailscale proxy keep using http://qbittorrent:8080 with no changes.
+# If the VPN drops, qBittorrent loses internet instead of leaking your IP.
+# =============================================================================
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:v3.41
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TZ: ${TZ}
+      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER}
+      VPN_TYPE: ${VPN_TYPE:-wireguard}
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:-}
+      WIREGUARD_ADDRESSES: ${WIREGUARD_ADDRESSES:-}
+      OPENVPN_USER: ${OPENVPN_USER:-}
+      OPENVPN_PASSWORD: ${OPENVPN_PASSWORD:-}
+      SERVER_COUNTRIES: ${SERVER_COUNTRIES:-}
+      VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-off}
+      FIREWALL_OUTBOUND_SUBNETS: ${LAN_SUBNET}
+    volumes:
+      - ${CONFIG_ROOT}/gluetun:/gluetun
+    networks:
+      default:
+        aliases:
+          - qbittorrent
+    ports:
+      - 8080:8080            # qBittorrent web UI now lives inside gluetun
+    restart: unless-stopped
+
+  qbittorrent:
+    network_mode: "service:gluetun"
+    ports: !reset []
+    depends_on:
+      gluetun:
+        condition: service_healthy
