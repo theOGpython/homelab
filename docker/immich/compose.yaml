@@ -1,0 +1,96 @@
+# =============================================================================
+# Immich: family photo backup, at https://photos.<tailnet>.ts.net
+#
+# Based on Immich's official docker-compose.yml (release v3.3.5), adapted:
+#   - Tailscale sidecar for private HTTPS access
+#   - Intel QuickSync for video transcoding (official "quicksync" config)
+#   - photos on their own disk (/srv/photos), database on the system disk
+#   - Immich gets only the variables it needs (no Tailscale key in its env)
+#
+# Always check the release notes before updating: https://github.com/immich-app/immich/releases
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: immich
+
+services:
+
+  ts-immich:
+    image: tailscale/tailscale:stable
+    hostname: photos
+    container_name: ts-immich
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: photos
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/immich:/var/lib/tailscale
+      - ./tailscale/immich.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 2283:2283                      # LAN access (use this for the first big upload)
+    restart: unless-stopped
+
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    network_mode: "service:ts-immich"
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128   # Intel QuickSync for video transcoding
+    environment: &immich-env
+      TZ: ${TZ}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME}
+    volumes:
+      - ${UPLOAD_LOCATION}:/data
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - ts-immich
+      - redis
+      - database
+    restart: always
+    healthcheck:
+      disable: false
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    environment: *immich-env
+    volumes:
+      - model-cache:/cache
+    restart: always
+    healthcheck:
+      disable: false
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9@sha256:c123e3715db63d06d4ad6964884037aa0d5d4d703939b9929954112889708e1d
+    healthcheck:
+      test: redis-cli ping | grep -q PONG || exit 1
+    restart: always
+
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    volumes:
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: always
+    healthcheck:
+      disable: false
+
+volumes:
+  model-cache:
