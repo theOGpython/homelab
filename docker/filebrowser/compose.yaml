@@ -1,0 +1,52 @@
+# =============================================================================
+# FileBrowser Quantum: drag-and-drop uploads to the media library,
+# at https://files.<tailnet>.ts.net
+#
+# Serves ONLY /srv/data/media (movies, tv, music, audiobooks, podcasts).
+# Immich photos are deliberately NOT exposed here: never edit them by hand.
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: filebrowser
+
+services:
+
+  ts-files:
+    image: tailscale/tailscale:stable
+    hostname: files
+    container_name: ts-files
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: files
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/files:/var/lib/tailscale
+      - ./tailscale/files.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8099:80                         # LAN access
+    restart: unless-stopped
+
+  filebrowser:
+    image: gtstef/filebrowser:1-stable
+    container_name: filebrowser
+    network_mode: "service:ts-files"
+    user: "1000:1000"                   # same owner as the rest of the media
+    environment:
+      FILEBROWSER_CONFIG: /config/config.yaml
+      FILEBROWSER_ADMIN_PASSWORD: ${FILEBROWSER_ADMIN_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - ./config.yaml:/config/config.yaml:ro
+      - ${CONFIG_ROOT}/filebrowser:/home/filebrowser/data   # database + cache
+      - ${DATA_ROOT}/media:/media
+    depends_on:
+      - ts-files
+    restart: unless-stopped

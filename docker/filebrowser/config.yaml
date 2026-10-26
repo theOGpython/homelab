@@ -1,0 +1,17 @@
+# FileBrowser Quantum (1.x stable). Quantum validates this file strictly:
+# a typo or unknown key stops the container from starting.
+server:
+  port: 80
+  sources:
+    - path: "/media"
+      name: "Media"
+      config:
+        defaultEnabled: true
+auth:
+  adminUsername: admin
+  methods:
+    password:
+      enabled: true
+      minLength: 10
+frontend:
+  name: "Home Files"
