@@ -14,6 +14,9 @@
     },
     "6767": {
       "HTTPS": true
+    },
+    "8686": {
+      "HTTPS": true
     }
   },
   "Web": {
@@ -51,6 +54,13 @@
           "Proxy": "http://bazarr:6767"
         }
       }
+    },
+    "${TS_CERT_DOMAIN}:8686": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://lidarr:8686"
+        }
+      }
     }
   },
   "AllowFunnel": {
@@ -58,6 +68,7 @@
     "${TS_CERT_DOMAIN}:9696": false,
     "${TS_CERT_DOMAIN}:8989": false,
     "${TS_CERT_DOMAIN}:7878": false,
-    "${TS_CERT_DOMAIN}:6767": false
+    "${TS_CERT_DOMAIN}:6767": false,
+    "${TS_CERT_DOMAIN}:8686": false
   }
 }

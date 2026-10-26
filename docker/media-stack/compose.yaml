@@ -107,6 +107,18 @@ services:
       - 6767:6767
     restart: unless-stopped
 
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment:
+      <<: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/lidarr:/config
+      - ${DATA_ROOT}:/data
+    ports:
+      - 8686:8686
+    restart: unless-stopped
+
   # Tailscale entry point for the download apps:
   # https://arr.<tailnet>.ts.net:<port> for each app
   ts-arr:
