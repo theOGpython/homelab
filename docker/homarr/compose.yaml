@@ -1,0 +1,52 @@
+# =============================================================================
+# Homarr: homelab dashboard, at https://home.<tailnet>.ts.net
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh          # creates .env (never committed)
+#   docker compose up -d
+# =============================================================================
+
+name: homarr
+
+services:
+
+  ts-homarr:
+    image: tailscale/tailscale:stable
+    hostname: home
+    container_name: ts-homarr
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: home
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/homarr:/var/lib/tailscale
+      - ./tailscale/homarr.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 7575:7575                      # LAN access
+    restart: unless-stopped
+
+  homarr:
+    image: ghcr.io/homarr-labs/homarr:latest
+    container_name: homarr
+    network_mode: "service:ts-homarr"
+    environment:
+      # Encrypts saved integration passwords/API keys. BACK THIS UP.
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY}
+      TZ: ${TZ}
+    volumes:
+      - homarr-data:/appdata           # named volume: avoids permission issues
+      # Optional Docker integration (shows container status, start/stop).
+      # Gives Homarr full control of Docker, so it's off by default.
+      # - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - ts-homarr
+    restart: unless-stopped
+
+volumes:
+  homarr-data:
