@@ -11,6 +11,7 @@ Huawei ODU ──(local API, every 60s)──▶ odu-exporter ──▶ Promethe
 | Grafana | `http://192.168.3.201:3000` | `https://grafana.<tailnet>.ts.net` |
 | Prometheus | `http://192.168.3.201:9090` | (LAN/subnet router only) |
 | Exporter metrics | inside Docker only (`odu-exporter:9877`) | none |
+| Uptime Kuma | `http://192.168.3.201:3001` | `https://status.tailc33d1b.ts.net` |
 
 Polling happens entirely on the home network, so it uses **no internet data**.
 
@@ -47,3 +48,9 @@ Then disable key expiry for the new **grafana** machine in the Tailscale admin c
 - Daily bars are UTC days, i.e. 1am–1am Lagos time.
 - Data lives in Docker named volumes (`monitoring_prometheus-data`, `monitoring_grafana-data`) inside the docker LXC, so it's covered by LXC backups.
 - Dashboard edits made in the UI are kept, but the JSON in this repo is the source of truth. Export changes back to `grafana/dashboards/home-internet.json` to version them.
+
+## Uptime Kuma
+
+Checks each service every 60 seconds and sends Telegram alerts on down/up. Monitors use **LAN addresses** (Kuma runs on the server itself). Notification: Telegram, reusing the n8n bot token and your chat ID.
+
+**Limitation:** Kuma runs on the same server it watches. If the whole server or container 201 goes down, it can't alert. An external heartbeat (e.g. healthchecks.io free tier, pinged by a cron job) covers that case.

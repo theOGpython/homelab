@@ -5,6 +5,7 @@
 #                 internet data used) and exposes metrics on :9877
 #   prometheus    stores the history (2 years by default)
 #   grafana       dashboards, at https://grafana.<tailnet>.ts.net
+#   uptime-kuma   service up/down checks + Telegram alerts, at https://status.<tailnet>.ts.net
 #
 # Usage (inside the "docker" LXC):
 #   ./setup-env.sh            # creates .env (never committed)
@@ -85,6 +86,44 @@ services:
       - prometheus
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # Uptime Kuma: checks every service each minute, alerts on Telegram,
+  # at https://status.<tailnet>.ts.net
+  # ---------------------------------------------------------------------------
+  ts-status:
+    image: tailscale/tailscale:stable
+    hostname: status
+    container_name: ts-status
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: status
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/status:/var/lib/tailscale
+      - ./tailscale/status.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 3001:3001                        # LAN access
+    restart: unless-stopped
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    network_mode: "service:ts-status"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - uptime-kuma-data:/app/data       # named volume: avoids permission issues
+    depends_on:
+      - ts-status
+    restart: unless-stopped
+
 volumes:
   prometheus-data:
   grafana-data:
+  uptime-kuma-data:
