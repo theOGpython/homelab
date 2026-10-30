@@ -1,0 +1,160 @@
+# Links use Tailscale addresses (work anywhere).
+# Widgets talk to services over the LAN; keys come from homepage.secret.
+
+- Watch & Listen:
+    - Jellyfin:
+        icon: jellyfin.svg
+        href: https://jellyfin.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:8096
+        widget:
+          type: jellyfin
+          url: http://192.168.3.201:8096
+          key: "{{HOMEPAGE_VAR_JELLYFIN_KEY}}"
+          enableBlocks: true
+          enableNowPlaying: true
+    - Seerr:
+        icon: jellyseerr.svg
+        href: https://requests.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:5055
+        widget:
+          type: seerr
+          url: http://192.168.3.201:5055
+          key: "{{HOMEPAGE_VAR_SEERR_KEY}}"
+    - Audiobookshelf:
+        icon: audiobookshelf.svg
+        href: https://books.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:13378
+        widget:
+          type: audiobookshelf
+          url: http://192.168.3.201:13378
+          key: "{{HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY}}"
+
+- Library:
+    - Immich:
+        icon: immich.svg
+        href: https://photos.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:2283
+        widget:
+          type: immich
+          url: http://192.168.3.201:2283
+          key: "{{HOMEPAGE_VAR_IMMICH_KEY}}"
+          version: 2
+    - Ebooks:
+        icon: calibre-web.svg
+        href: https://ebooks.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:8083
+        widget:
+          type: calibreweb
+          url: http://192.168.3.201:8083
+          username: "{{HOMEPAGE_VAR_CALIBRE_USER}}"
+          password: "{{HOMEPAGE_VAR_CALIBRE_PASS}}"
+    - Files:
+        icon: filebrowser.svg
+        href: https://files.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:8099
+    - PDF Tools:
+        icon: stirling-pdf.svg
+        href: https://pdf.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:8095
+
+- Downloads:
+    - Sonarr:
+        icon: sonarr.svg
+        href: https://arr.tailc33d1b.ts.net:8989
+        widget:
+          type: sonarr
+          url: http://192.168.3.201:8989
+          key: "{{HOMEPAGE_VAR_SONARR_KEY}}"
+    - Radarr:
+        icon: radarr.svg
+        href: https://arr.tailc33d1b.ts.net:7878
+        widget:
+          type: radarr
+          url: http://192.168.3.201:7878
+          key: "{{HOMEPAGE_VAR_RADARR_KEY}}"
+    - Lidarr:
+        icon: lidarr.svg
+        href: https://arr.tailc33d1b.ts.net:8686
+        widget:
+          type: lidarr
+          url: http://192.168.3.201:8686
+          key: "{{HOMEPAGE_VAR_LIDARR_KEY}}"
+    - Prowlarr:
+        icon: prowlarr.svg
+        href: https://arr.tailc33d1b.ts.net:9696
+        widget:
+          type: prowlarr
+          url: http://192.168.3.201:9696
+          key: "{{HOMEPAGE_VAR_PROWLARR_KEY}}"
+    - qBittorrent:
+        icon: qbittorrent.svg
+        href: https://arr.tailc33d1b.ts.net:8080
+        widget:
+          type: qbittorrent
+          url: http://192.168.3.201:8080
+          username: "{{HOMEPAGE_VAR_QBIT_USER}}"
+          password: "{{HOMEPAGE_VAR_QBIT_PASS}}"
+    - Bazarr:
+        icon: bazarr.svg
+        href: https://arr.tailc33d1b.ts.net:6767
+        widget:
+          type: bazarr
+          url: http://192.168.3.201:6767
+          key: "{{HOMEPAGE_VAR_BAZARR_KEY}}"
+
+- Home & Internet:
+    - Home Internet:
+        icon: grafana.svg
+        href: https://grafana.tailc33d1b.ts.net
+        description: Airtel ODU usage
+        widget:
+          type: prometheusmetric
+          url: http://192.168.3.201:9090
+          refreshInterval: 60000
+          metrics:
+            - label: Used today
+              query: odu_day_used_bytes
+              format:
+                type: bytes
+            - label: Billing period
+              query: odu_month_download_bytes + odu_month_upload_bytes
+              format:
+                type: bytes
+            - label: Download now
+              query: odu_download_rate_bytes * 8
+              format:
+                type: bits
+    - Home Assistant:
+        icon: home-assistant.svg
+        href: http://192.168.3.202:8123
+        siteMonitor: http://192.168.3.202:8123
+        widget:
+          type: homeassistant
+          url: http://192.168.3.202:8123
+          key: "{{HOMEPAGE_VAR_HASS_TOKEN}}"
+    - n8n:
+        icon: n8n.svg
+        href: https://n8n.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:5678
+
+- System:
+    - Proxmox:
+        icon: proxmox.svg
+        href: https://192.168.3.200:8006
+        widget:
+          type: proxmox
+          url: https://192.168.3.200:8006
+          username: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_ID}}"
+          password: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}}"
+          node: pve
+    - Uptime Kuma:
+        icon: uptime-kuma.svg
+        href: https://status.tailc33d1b.ts.net
+        widget:
+          type: uptimekuma
+          url: http://192.168.3.201:3001
+          slug: "{{HOMEPAGE_VAR_KUMA_SLUG}}"
+    - Homarr:
+        icon: homarr.svg
+        href: https://home.tailc33d1b.ts.net
+        siteMonitor: http://192.168.3.201:7575

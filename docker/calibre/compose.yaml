@@ -1,0 +1,52 @@
+# =============================================================================
+# Calibre-Web Automated: ebook library, reader and auto-import,
+# at https://ebooks.<tailnet>.ts.net
+#
+# Drop books into /srv/data/media/books-ingest (e.g. via FileBrowser) and CWA
+# adds them to the library automatically. Ingested originals are REMOVED.
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: calibre
+
+services:
+
+  ts-ebooks:
+    image: tailscale/tailscale:stable
+    hostname: ebooks
+    container_name: ts-ebooks
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: ebooks
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/ebooks:/var/lib/tailscale
+      - ./tailscale/ebooks.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8083:8083                      # LAN access
+    restart: unless-stopped
+
+  calibre-web-automated:
+    image: crocodilestick/calibre-web-automated:latest
+    container_name: calibre-web-automated
+    network_mode: "service:ts-ebooks"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: ${TZ}
+      NETWORK_SHARE_MODE: "false"
+    volumes:
+      - ${CONFIG_ROOT}/calibre/config:/config
+      - ${DATA_ROOT}/media/books-ingest:/cwa-book-ingest
+      - ${DATA_ROOT}/media/books:/calibre-library
+    depends_on:
+      - ts-ebooks
+    restart: unless-stopped

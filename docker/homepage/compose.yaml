@@ -1,0 +1,52 @@
+# =============================================================================
+# Homepage: config-as-code dashboard, at https://homepage.<tailnet>.ts.net
+#
+# Dashboard layout lives in ./config (versioned in Git).
+# API keys/passwords live in homepage.secret (gitignored via *.secret) and are
+# referenced in YAML as {{HOMEPAGE_VAR_...}}.
+#
+# LAN port is 3010 because Grafana already uses 3000 on this host.
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && nano homepage.secret && docker compose up -d
+# =============================================================================
+
+name: homepage
+
+services:
+
+  ts-homepage:
+    image: tailscale/tailscale:stable
+    hostname: homepage
+    container_name: ts-homepage
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: homepage
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/homepage:/var/lib/tailscale
+      - ./tailscale/homepage.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 3010:3000                      # LAN access (3000 is taken by Grafana)
+    restart: unless-stopped
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    network_mode: "service:ts-homepage"
+    env_file:
+      - homepage.secret                # HOMEPAGE_VAR_* API keys (gitignored)
+    environment:
+      TZ: ${TZ}
+      HOMEPAGE_ALLOWED_HOSTS: "homepage.${TS_TAILNET},192.168.3.201:3010"
+    volumes:
+      - ./config:/app/config
+    depends_on:
+      - ts-homepage
+    restart: unless-stopped

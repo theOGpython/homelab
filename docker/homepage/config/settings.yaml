@@ -1,0 +1,21 @@
+title: Home
+theme: dark
+color: slate
+headerStyle: clean
+statusStyle: dot
+layout:
+  Watch & Listen:
+    style: row
+    columns: 3
+  Library:
+    style: row
+    columns: 3
+  Downloads:
+    style: row
+    columns: 3
+  Home & Internet:
+    style: row
+    columns: 3
+  System:
+    style: row
+    columns: 3

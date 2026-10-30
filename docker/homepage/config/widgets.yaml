@@ -1,0 +1,21 @@
+- greeting:
+    text_size: xl
+    text: Home
+- datetime:
+    text_size: l
+    format:
+      dateStyle: long
+      timeStyle: short
+      hour12: false
+- openmeteo:
+    label: Lagos            # change to your city
+    latitude: 6.5244        # change to your home's coordinates
+    longitude: 3.3792
+    timezone: Africa/Lagos
+    units: metric
+    cache: 15
+- resources:
+    label: docker (201)
+    cpu: true
+    memory: true
+    disk: /

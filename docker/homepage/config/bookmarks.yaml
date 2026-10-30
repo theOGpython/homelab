@@ -1,0 +1,7 @@
+- Homelab:
+    - GitHub repo:
+        - icon: github.svg
+          href: https://github.com
+    - Tailscale admin:
+        - icon: tailscale.svg
+          href: https://login.tailscale.com/admin

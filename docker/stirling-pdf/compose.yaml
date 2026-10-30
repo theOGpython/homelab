@@ -1,0 +1,52 @@
+# =============================================================================
+# Stirling PDF: private PDF toolkit (merge, split, OCR, convert, sign...),
+# at https://pdf.<tailnet>.ts.net
+#
+# LAN port is 8095 because qBittorrent already uses 8080 on this host.
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: stirling-pdf
+
+services:
+
+  ts-pdf:
+    image: tailscale/tailscale:stable
+    hostname: pdf
+    container_name: ts-pdf
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: pdf
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/pdf:/var/lib/tailscale
+      - ./tailscale/pdf.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8095:8080                      # LAN access (8080 is taken by qBittorrent)
+    restart: unless-stopped
+
+  stirling-pdf:
+    image: stirlingtools/stirling-pdf:latest
+    container_name: stirling-pdf
+    network_mode: "service:ts-pdf"
+    environment:
+      TZ: ${TZ}
+    volumes:
+      - stirling-configs:/configs        # named volumes: no permission issues
+      - stirling-pipeline:/pipeline
+    mem_limit: 1536m                     # cap so heavy conversions can't starve other services
+    depends_on:
+      - ts-pdf
+    restart: unless-stopped
+
+volumes:
+  stirling-configs:
+  stirling-pipeline:
