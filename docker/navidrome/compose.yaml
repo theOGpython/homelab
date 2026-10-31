@@ -1,0 +1,49 @@
+# =============================================================================
+# Navidrome: music server (Subsonic API), at https://music.<tailnet>.ts.net
+# Reads the same music folder as Jellyfin and Lidarr, read-only.
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: navidrome
+
+services:
+
+  ts-music:
+    image: tailscale/tailscale:stable
+    hostname: music
+    container_name: ts-music
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: music
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/music:/var/lib/tailscale
+      - ./tailscale/music.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 4533:4533                      # LAN access
+    restart: unless-stopped
+
+  navidrome:
+    image: deluan/navidrome:0.64.2
+    container_name: navidrome
+    network_mode: "service:ts-music"
+    user: "1000:1000"
+    environment:
+      TZ: ${TZ}
+      ND_SCANSCHEDULE: 1h              # rescan the library hourly
+      ND_LOGLEVEL: info
+      ND_SESSIONTIMEOUT: 168h          # stay logged in for a week
+    volumes:
+      - ${CONFIG_ROOT}/navidrome:/data
+      - ${DATA_ROOT}/media/music:/music:ro
+    depends_on:
+      - ts-music
+    restart: unless-stopped

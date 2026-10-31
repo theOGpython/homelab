@@ -1,0 +1,111 @@
+# =============================================================================
+# Nextcloud 33: files, calendar, contacts, at https://cloud.<tailnet>.ts.net
+#
+#   nextcloud   the app (Apache image)
+#   nc-cron     runs Nextcloud's background jobs every 5 minutes
+#   nc-db       PostgreSQL 16
+#   nc-redis    cache and file locking
+#
+# User files live in /srv/data/nextcloud (media disk), owned by uid 33 (www-data).
+# Pinned to major version 33: Nextcloud can only upgrade ONE major at a time.
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: nextcloud
+
+x-nextcloud-env: &nc-env
+  POSTGRES_HOST: nc-db
+  POSTGRES_DB: nextcloud
+  POSTGRES_USER: nextcloud
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  REDIS_HOST: nc-redis
+  TZ: ${TZ}
+
+services:
+
+  ts-cloud:
+    image: tailscale/tailscale:stable
+    hostname: cloud
+    container_name: ts-cloud
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: cloud
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/cloud:/var/lib/tailscale
+      - ./tailscale/cloud.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8091:80                        # LAN (troubleshooting); use the Tailscale URL normally
+    restart: unless-stopped
+
+  nextcloud:
+    image: nextcloud:33-apache
+    container_name: nextcloud
+    network_mode: "service:ts-cloud"
+    environment:
+      <<: *nc-env
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: "cloud.${TS_TAILNET} 192.168.3.201"
+      TRUSTED_PROXIES: "127.0.0.1"
+      APACHE_DISABLE_REWRITE_IP: "1"
+      OVERWRITEPROTOCOL: https
+      OVERWRITECLIURL: https://cloud.${TS_TAILNET}
+      PHP_UPLOAD_LIMIT: 10G
+      PHP_MEMORY_LIMIT: 512M
+    volumes:
+      - nc-html:/var/www/html
+      - ${DATA_ROOT}/nextcloud:/var/www/html/data
+    depends_on:
+      ts-cloud:
+        condition: service_started
+      nc-db:
+        condition: service_healthy
+      nc-redis:
+        condition: service_started
+    restart: unless-stopped
+
+  nc-cron:
+    image: nextcloud:33-apache
+    container_name: nc-cron
+    entrypoint: /cron.sh
+    environment: *nc-env
+    volumes:
+      - nc-html:/var/www/html
+      - ${DATA_ROOT}/nextcloud:/var/www/html/data
+    depends_on:
+      - nextcloud
+    restart: unless-stopped
+
+  nc-db:
+    image: postgres:16
+    container_name: nc-db
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - nc-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  nc-redis:
+    image: redis:7-alpine
+    container_name: nc-redis
+    restart: unless-stopped
+
+volumes:
+  nc-html:
+  nc-db:
