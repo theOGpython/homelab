@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Drawing Club">
+<meta name="theme-color" content="#FFE680">
+<title>Drawing Club</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sun: #FFE680;        /* page */
+    --paper: #FFFFFF;      /* drawing surfaces */
+    --ink: #26324A;        /* lines and text */
+    --crayon: #FF6B1A;     /* the new step */
+    --grass: #22A866;
+    --sky: #2F8FEA;
+    --berry: #F0507D;
+    --pencil: #B9C2D3;     /* guides */
+    --font: "Baloo 2", "Trebuchet MS", "Avenir Next Rounded", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--font);
+    font-size: 1.125rem;
+    line-height: 1.45;
+    color: var(--ink);
+    background: var(--sun);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    -webkit-tap-highlight-color: transparent;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 4px solid var(--sky); outline-offset: 3px; }
+  .hidden { display: none !important; }
+
+  /* ---------- shared pieces ---------- */
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
+  .bar { display: flex; align-items: center; gap: .75rem; padding: .75rem 0 1rem; }
+  .bar h1, .bar h2 { margin: 0; font-weight: 800; line-height: 1.1; }
+  .bar h2 { font-size: 2rem; }
+  .spacer { flex: 1; }
+  .chip {
+    border: 3px solid var(--ink); background: var(--paper); border-radius: 999px;
+    padding: .35rem 1rem .25rem; font-weight: 700; box-shadow: 3px 3px 0 var(--ink); white-space: nowrap;
+  }
+  .chip:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .big {
+    border: 3px solid var(--ink); border-radius: 22px; font-weight: 800; font-size: 1.5rem;
+    padding: .7rem 1.4rem .55rem; box-shadow: 5px 5px 0 var(--ink); background: var(--paper);
+    min-height: 64px;
+  }
+  .big:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); }
+  .big:disabled { opacity: .35; box-shadow: none; cursor: default; transform: none; }
+  .go { background: var(--grass); color: #fff; }
+  .draw-it { background: var(--crayon); color: #fff; }
+
+  /* ---------- home ---------- */
+  .title {
+    font-size: clamp(3rem, 9vw, 5.5rem); font-weight: 800; line-height: .95; margin: .5rem 0 0;
+    letter-spacing: -0.01em;
+  }
+  .scribble { display: block; width: min(420px, 80%); height: 26px; margin: .25rem 0 1.25rem; }
+  .scribble path { fill: none; stroke: var(--crayon); stroke-width: 7; stroke-linecap: round; }
+  .intro { max-width: 34em; margin: 0 0 1.5rem; font-size: 1.25rem; }
+  .home-actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2.25rem; }
+  .level { margin: 0 0 2.25rem; }
+  .level h3 { font-size: 1.75rem; font-weight: 800; margin: 0 0 .75rem; display: flex; align-items: center; gap: .5rem; }
+  .stars { color: var(--crayon); font-size: 1.4rem; letter-spacing: .1em; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1.1rem; }
+  .tile {
+    background: var(--paper); border: 3px solid var(--ink); border-radius: 26px 22px 28px 20px;
+    padding: .5rem .5rem .6rem; box-shadow: 5px 5px 0 var(--ink); text-align: center;
+  }
+  .tile:nth-child(3n+2) { border-radius: 20px 28px 22px 26px; }
+  .tile:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--ink); }
+  .tile svg { width: 100%; aspect-ratio: 1; display: block; }
+  .tile span { display: block; font-weight: 800; font-size: 1.35rem; }
+
+  /* ---------- drawings (svg) ---------- */
+  .art { fill: none; stroke: var(--ink); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+  .art .dot { fill: var(--ink); stroke: none; }
+  .art .scene { stroke: var(--grass); }
+  .art .later { display: none; }
+  .art .now { stroke: var(--crayon); stroke-width: 7; }
+  .art .now.dot { fill: var(--crayon); }
+  .art .now:not(.dot) { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw .9s ease-out forwards; }
+  .art .now.dot { transform-box: fill-box; transform-origin: center; animation: pop .45s ease-out both; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+  .guide { fill: none; stroke: var(--pencil); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+  .guide .dot { fill: var(--pencil); stroke: none; }
+
+  /* ---------- lesson ---------- */
+  .lesson { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+  .stage {
+    background: var(--paper); border: 4px solid var(--ink); border-radius: 30px; box-shadow: 7px 7px 0 var(--ink);
+    aspect-ratio: 1; display: grid; place-items: center; padding: 4%;
+  }
+  .stage svg { width: 100%; height: 100%; }
+  .coach { display: flex; flex-direction: column; gap: 1.1rem; }
+  .step-count { font-weight: 700; font-size: 1.2rem; margin: 0; }
+  .say { font-size: clamp(1.7rem, 3.4vw, 2.4rem); font-weight: 800; line-height: 1.15; margin: 0; min-height: 3.5em; }
+  .dots { display: flex; flex-wrap: wrap; gap: .45rem; }
+  .dots i { width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); }
+  .dots i.done { background: var(--ink); }
+  .dots i.here { background: var(--crayon); border-color: var(--crayon); }
+  .nav { display: flex; gap: 1rem; }
+  .nav .big { flex: 1; }
+  .idea {
+    margin: .25rem 0 0; padding: .9rem 1.1rem; background: var(--paper); border: 3px dashed var(--ink);
+    border-radius: 18px; font-size: 1.25rem;
+  }
+
+  /* ---------- drawing ---------- */
+  .canvas-box {
+    position: relative; background: var(--paper); border: 4px solid var(--ink); border-radius: 26px;
+    box-shadow: 7px 7px 0 var(--ink); aspect-ratio: 1; width: min(100%, calc(100vh - 260px)); margin: 0 auto; overflow: hidden;
+  }
+  .canvas-box svg, .canvas-box canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .canvas-box svg { padding: 4%; }
+  .canvas-box canvas { touch-action: none; cursor: crosshair; }
+  .tools {
+    display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: center;
+    max-width: 900px; margin: 1.1rem auto 0;
+  }
+  .crayon {
+    width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--ink); background: var(--c);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .crayon[aria-pressed="true"] { outline: 4px solid var(--ink); outline-offset: 3px; }
+  .tool[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+  .sizes { display: flex; gap: .4rem; }
+  .size { width: 46px; height: 46px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); display: grid; place-items: center; box-shadow: 3px 3px 0 var(--ink); }
+  .size b { display: block; border-radius: 50%; background: var(--ink); }
+  .size[aria-pressed="true"] { background: var(--sun); }
+  .chip.save { background: var(--grass); color: #fff; font-size: 1.2rem; padding: .45rem 1.3rem .35rem; }
+  .chip:disabled { opacity: .5; }
+
+  /* ---------- gallery ---------- */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 1.25rem; }
+  .frame { background: var(--paper); border: 3px solid var(--ink); border-radius: 18px; padding: .6rem; box-shadow: 5px 5px 0 var(--ink); }
+  .frame img { width: 100%; aspect-ratio: 1; display: block; border-radius: 10px; background: #fff; cursor: zoom-in; }
+  .frame p { margin: .4rem .2rem 0; display: flex; justify-content: space-between; align-items: center; gap: .5rem; font-weight: 700; }
+  .frame small { font-weight: 500; opacity: .75; }
+  .trash { border: none; background: none; font-size: 1.3rem; padding: .2rem .4rem; border-radius: 8px; }
+  .empty { font-size: 1.4rem; max-width: 26em; }
+  dialog { border: 4px solid var(--ink); border-radius: 24px; padding: .75rem; max-width: min(92vw, 720px); }
+  dialog::backdrop { background: rgba(38, 50, 74, .6); }
+  dialog img { width: 100%; display: block; border-radius: 12px; }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(1.5rem + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--ink); color: var(--paper); padding: .6rem 1.3rem .5rem; border-radius: 999px; font-weight: 800; z-index: 10;
+  }
+
+  @media (max-width: 760px) {
+    .lesson { grid-template-columns: 1fr; }
+    .say { min-height: 0; }
+    .bar h2 { font-size: 1.6rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .art .now:not(.dot), .art .now.dot { animation: none; stroke-dashoffset: 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HOME -->
+<main id="home" class="wrap">
+  <h1 class="title">Drawing Club</h1>
+  <svg class="scribble" viewBox="0 0 420 26" aria-hidden="true"><path d="M6 16 C 60 4, 110 24, 170 12 S 280 6, 330 16 S 400 18, 414 9"/></svg>
+  <p class="intro">Every animal starts with simple shapes. Pick one, follow the steps, then draw it yourself.</p>
+  <div class="home-actions">
+    <button class="big draw-it" data-go="#/draw/free">Free drawing</button>
+    <button class="big" data-go="#/gallery">My drawings</button>
+  </div>
+  <div id="levels"></div>
+</main>
+
+<!-- LESSON -->
+<main id="lesson" class="wrap hidden">
+  <div class="bar">
+    <button class="chip" data-go="#/">All animals</button>
+    <h2 id="lesson-name"></h2>
+  </div>
+  <div class="lesson">
+    <div class="stage"><svg id="lesson-art" class="art" viewBox="0 0 300 300" role="img"></svg></div>
+    <div class="coach">
+      <p class="step-count" id="step-count"></p>
+      <p class="say" id="step-say" aria-live="polite"></p>
+      <div class="dots" id="step-dots" aria-hidden="true"></div>
+      <div class="nav">
+        <button class="big" id="prev">Back</button>
+        <button class="big go" id="next">Next step</button>
+      </div>
+      <button class="big draw-it" id="to-draw">Draw it myself</button>
+      <p class="idea hidden" id="idea"></p>
+    </div>
+  </div>
+</main>
+
+<!-- DRAW -->
+<main id="draw" class="wrap hidden">
+  <div class="bar">
+    <button class="chip" id="draw-back">Back</button>
+    <h2 id="draw-name"></h2>
+    <span class="spacer"></span>
+    <button class="chip tool" id="guide-toggle" aria-pressed="true">Guide</button>
+    <button class="chip save" id="save">Save</button>
+  </div>
+  <div class="canvas-box" id="canvas-box">
+    <svg id="guide" class="guide" viewBox="0 0 300 300" aria-hidden="true"></svg>
+    <canvas id="canvas" aria-label="Drawing area"></canvas>
+  </div>
+  <div class="tools" id="tools">
+    <div id="crayons" style="display:flex;gap:.6rem;flex-wrap:wrap;justify-content:center"></div>
+    <div class="sizes" id="sizes"></div>
+    <button class="chip tool" id="eraser" aria-pressed="false">Eraser</button>
+    <button class="chip" id="undo">Undo</button>
+    <button class="chip" id="clear">Start over</button>
+  </div>
+</main>
+
+<!-- GALLERY -->
+<main id="gallery" class="wrap hidden">
+  <div class="bar">
+    <button class="chip" data-go="#/">All animals</button>
+    <h2>My drawings</h2>
+  </div>
+  <div class="gallery" id="gallery-grid"></div>
+  <p class="empty hidden" id="gallery-empty">No drawings yet. Pick an animal, draw it, and press "Save" to keep it here.</p>
+</main>
+
+<dialog id="viewer"><img id="viewer-img" alt=""></dialog>
+<div class="toast hidden" id="toast" role="status"></div>
+
+<script>
+/* ===================================================================
+   Tutorials: original step-by-step drawings built from simple shapes.
+   Coordinates use a 300 x 300 canvas.
+   =================================================================== */
+const E = (cx, cy, rx, ry, k = '') => `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" pathLength="1" class="${k}"/>`;
+const C = (cx, cy, r, k = '') => `<circle cx="${cx}" cy="${cy}" r="${r}" pathLength="1" class="${k}"/>`;
+const D = (cx, cy, r) => `<circle cx="${cx}" cy="${cy}" r="${r}" class="dot"/>`;
+const P = (d, k = '') => `<path d="${d}" pathLength="1" class="${k}"/>`;
+const L = (x1, y1, x2, y2, k = '') => P(`M${x1} ${y1} L${x2} ${y2}`, k);
+const S = (...shapes) => shapes.join('');
+
+const LEVELS = [
+  { id: 'easy', name: 'Easy peasy', stars: 1 },
+  { id: 'mid', name: 'A bit trickier', stars: 2 },
+  { id: 'hard', name: 'Big challenge', stars: 3 },
+];
+
+const ANIMALS = [
+  { id: 'snake', name: 'Snake', level: 'easy',
+    idea: 'What colour is your snake? Give it stripes, zigzags or polka dots.',
+    steps: [
+      ['Draw an oval for the head.', E(206, 92, 44, 32)],
+      ['Add two dots for eyes.', S(D(194, 82, 6), D(220, 80, 6))],
+      ['Draw a smile and a forked tongue.', S(P('M214 104 Q230 112 244 100'), P('M246 94 L270 94 M270 94 L279 87 M270 94 L279 101'))],
+      ['Draw a long wiggly line for one side of the body.', P('M172.5 116.1 L169.7 117.6 L167.0 119.1 L164.4 120.6 L161.9 122.1 L159.4 123.7 L157.0 125.3 L154.7 127.0 L152.5 128.7 L150.3 130.5 L148.2 132.4 L146.2 134.3 L144.5 136.4 L142.9 138.6 L141.5 140.9 L140.1 143.3 L138.9 145.8 L137.8 148.3 L136.9 150.9 L136.2 153.6 L135.6 156.3 L135.2 159.1 L135.1 162.0 L135.2 164.9 L135.5 167.7 L136.1 170.6 L137.0 173.4 L138.0 176.1 L139.3 178.7 L140.8 181.1 L142.5 183.5 L144.3 185.7 L146.3 187.7 L148.4 189.7 L150.6 191.5 L153.0 193.2 L155.5 194.9 L158.1 196.4 L160.8 197.9 L163.6 199.3 L166.6 200.6 L169.7 201.9 L173.0 203.1 L176.7 204.3 L179.7 205.4 L182.6 206.5 L185.3 207.6 L187.9 208.8 L190.2 209.9 L192.4 211.1 L194.5 212.3 L196.3 213.5 L198.0 214.6 L199.5 215.8 L200.8 216.9 L202.0 217.9 L203.0 219.0 L203.9 219.9 L204.6 220.8 L205.2 221.6 L205.6 222.4 L206.0 223.0 L206.2 223.6 L206.4 224.2 L206.6 224.7 L206.7 225.2 L206.7 225.7 L206.7 226.2 L206.6 226.8 L206.4 227.5 L206.0 228.2 L205.6 229.1 L204.9 230.0 L204.1 231.0 L203.1 232.0 L201.9 233.0 L200.5 234.1 L198.9 235.2 L197.1 236.2 L195.0 237.3 L192.8 238.3 L190.4 239.3 L187.7 240.3 L184.9 241.2 L181.9 242.0 L178.6 242.8 L175.2 243.5 L171.6 244.2 L167.8 244.8 L163.7 245.3 L159.5 245.7 L157.0 245.9 L154.3 246.1 L151.8 246.3 L149.2 246.5 L146.7 246.7 L144.3 246.9 L141.9 247.0 L139.5 247.2 L137.2 247.3 L134.9 247.4 L132.6 247.6 L130.4 247.7 L128.1 247.8 L125.9 247.9 L123.8 248.0 L121.6 248.1 L119.5 248.3 L117.4 248.4 L115.3 248.5 L113.3 248.7 L111.2 248.8 L109.2 248.9 L107.2 249.1 L105.2 249.3 L103.2 249.5 L101.2 249.7 L99.2 249.9 L97.2 250.2 L95.3 250.4 L93.3 250.7 L91.4 251.1 L89.4 251.4 L87.5 251.8 L85.5 252.2 L83.6 252.6 L81.7 253.1 L79.7 253.5 L77.8 254.1 L75.8 254.6 L73.9 255.3 L71.9 255.9 L69.9 256.6 L67.9 257.3 L66.0 258.1 L64.0 259.0 L62.0 259.9 L60.0 260.8 L58.0 262.0')],
+      ['Draw a second wiggly line that meets the first at the tail.', P('M201.7 131.7 L199.1 133.3 L196.6 134.8 L194.3 136.4 L192.0 137.9 L189.9 139.5 L187.8 141.0 L185.8 142.6 L184.0 144.1 L182.2 145.6 L180.6 147.1 L179.0 148.6 L177.6 150.1 L176.3 151.5 L175.1 152.9 L174.0 154.2 L173.1 155.5 L172.3 156.7 L171.4 157.7 L170.6 158.6 L169.9 159.5 L169.3 160.3 L168.8 161.0 L168.4 161.6 L168.1 162.1 L167.8 162.6 L167.6 162.9 L167.5 163.2 L167.4 163.4 L167.3 163.6 L167.2 163.7 L167.1 163.9 L167.0 164.1 L167.0 164.4 L167.1 164.7 L167.2 165.1 L167.4 165.7 L167.7 166.3 L168.2 167.0 L168.9 167.8 L169.7 168.7 L170.7 169.6 L171.9 170.6 L173.3 171.6 L174.9 172.6 L176.6 173.7 L178.6 174.8 L180.7 175.9 L183.0 176.9 L186.4 178.3 L190.1 179.8 L193.7 181.5 L197.1 183.2 L200.3 184.9 L203.4 186.7 L206.4 188.6 L209.2 190.5 L211.8 192.5 L214.3 194.6 L216.6 196.7 L218.7 198.9 L220.7 201.1 L222.5 203.5 L224.2 205.9 L225.6 208.4 L226.9 210.9 L227.9 213.6 L228.8 216.3 L229.3 219.1 L229.6 221.9 L229.6 224.8 L229.4 227.6 L228.8 230.3 L228.0 233.0 L226.9 235.6 L225.5 238.0 L224.0 240.4 L222.2 242.5 L220.3 244.5 L218.2 246.4 L216.0 248.2 L213.6 249.8 L211.1 251.3 L208.4 252.7 L205.6 254.0 L202.7 255.2 L199.6 256.3 L196.4 257.3 L193.0 258.2 L189.5 259.1 L185.8 259.8 L182.0 260.5 L178.0 261.0 L173.8 261.5 L169.5 261.9 L165.1 262.1 L160.5 262.3 L157.6 262.3 L154.9 262.3 L152.2 262.2 L149.6 262.2 L147.0 262.1 L144.5 262.0 L142.0 261.9 L139.5 261.7 L137.1 261.6 L134.8 261.4 L132.5 261.3 L130.2 261.1 L128.0 261.0 L125.8 260.8 L123.6 260.6 L121.5 260.4 L119.4 260.3 L117.3 260.1 L115.2 259.9 L113.2 259.8 L111.2 259.6 L109.2 259.5 L107.3 259.3 L105.3 259.2 L103.4 259.1 L101.5 259.0 L99.6 258.9 L97.7 258.8 L95.8 258.8 L93.9 258.7 L92.0 258.7 L90.1 258.7 L88.2 258.7 L86.3 258.7 L84.4 258.8 L82.5 258.9 L80.6 259.0 L78.7 259.1 L76.7 259.3 L74.8 259.5 L72.8 259.7 L70.8 260.0 L68.7 260.3 L66.7 260.6 L64.6 261.0 L62.4 261.3 L60.3 261.7 L58.0 262.0')],
+      ['Decorate the body with spots.', S(C(152, 156, 6), C(213, 211, 6), C(190, 249, 6), C(126, 254, 6))],
+    ] },
+  { id: 'spider', name: 'Spider', level: 'easy',
+    idea: 'Can you draw a big web for your spider to live in?',
+    steps: [
+      ['Draw an oval for the head.', E(150, 108, 38, 32)],
+      ['Add two round eyes with dots in the middle.', S(C(137, 103, 9), C(163, 103, 9), D(137, 104, 4), D(163, 104, 4))],
+      ['Draw a bigger oval underneath for the body.', E(150, 186, 55, 46)],
+      ['Give your spider a happy smile.', P('M136 121 Q150 132 164 121')],
+      ['Draw four bendy legs on one side.', S(P('M108 162 Q70 136 52 152'), P('M102 178 Q60 168 42 188'), P('M103 198 Q62 205 50 230'), P('M110 215 Q82 240 74 262'))],
+      ['Draw four legs on the other side.', S(P('M192 162 Q230 136 248 152'), P('M198 178 Q240 168 258 188'), P('M197 198 Q238 205 250 230'), P('M190 215 Q218 240 226 262'))],
+      ['Hang your spider from a long thread.', L(150, 76, 150, 16)],
+    ] },
+  { id: 'owl', name: 'Owl', level: 'easy',
+    idea: 'Owls sleep in the day. Can you draw a moon and stars behind yours?',
+    steps: [
+      ['Draw a big circle for the head.', C(150, 112, 62)],
+      ['Draw a slightly smaller circle underneath for the body.', C(150, 200, 56)],
+      ['Add two round eyes.', S(C(127, 105, 19), C(173, 105, 19))],
+      ['Colour in the middle of each eye.', S(D(127, 107, 8), D(173, 107, 8))],
+      ['Draw a little triangle beak.', P('M141 128 L159 128 L150 146 Z')],
+      ['Add a triangle wing on each side.', S(P('M100 182 L82 236 L114 226 Z'), P('M200 182 L218 236 L186 226 Z'))],
+      ['Draw two small triangle feet.', S(P('M128 252 L136 268 L144 252'), P('M156 252 L164 268 L172 252'))],
+      ['Add pointy ear tufts on top.', S(P('M104 74 L100 46 L124 60'), P('M196 74 L200 46 L176 60'))],
+      ['Give your owl a branch to sit on.', L(40, 268, 260, 268, 'scene')],
+    ] },
+  { id: 'mouse', name: 'Mouse', level: 'easy',
+    idea: 'Where does your mouse live? Draw a little door in a wall for it.',
+    steps: [
+      ['Draw a triangle with round corners for the face.', P('M95 112 Q150 86 205 112 Q186 172 157 220 Q150 230 143 220 Q114 172 95 112 Z')],
+      ['Add two big round ears.', S(C(92, 86, 32), C(208, 86, 32))],
+      ['Draw smaller circles inside the ears.', S(C(92, 86, 15), C(208, 86, 15))],
+      ['Add two dots for eyes.', S(D(130, 140, 7), D(170, 140, 7))],
+      ['Draw a round nose at the bottom.', D(150, 220, 10)],
+      ['Add whiskers on both sides.', S(L(138, 206, 92, 196), L(138, 213, 92, 220), L(162, 206, 208, 196), L(162, 213, 208, 220))],
+      ['Draw a piece of cheese for your mouse.', P('M206 262 L262 236 L262 270 Z', 'scene')],
+    ] },
+  { id: 'cat', name: 'Cat', level: 'easy',
+    idea: 'What is your cat playing with? A ball of wool? A box?',
+    steps: [
+      ['Draw a circle for the head.', C(150, 105, 55)],
+      ['Add two triangle ears.', S(P('M108 78 L112 38 L138 60'), P('M192 78 L188 38 L162 60'))],
+      ['Add two dots for eyes.', S(D(130, 100, 7), D(170, 100, 7))],
+      ['Draw a little nose and a smile.', S(P('M144 117 L156 117 L150 125 Z'), P('M150 125 Q142 137 133 131 M150 125 Q158 137 167 131'))],
+      ['Draw an oval for the body.', E(150, 205, 46, 40)],
+      ['Add two little feet.', S(E(130, 244, 14, 8), E(170, 244, 14, 8))],
+      ['Give your cat a curly tail.', P('M195 215 Q245 208 232 166')],
+      ['Finish with whiskers.', S(L(122, 118, 86, 110), L(122, 124, 86, 130), L(178, 118, 214, 110), L(178, 124, 214, 130))],
+    ] },
+  { id: 'elephant', name: 'Elephant', level: 'easy',
+    idea: 'Elephants love water. Can you draw your elephant spraying a fountain?',
+    steps: [
+      ['Draw a circle for the head.', C(140, 110, 48)],
+      ['Add two big oval ears.', S(E(86, 108, 28, 40), E(194, 108, 28, 40))],
+      ['Add two dots for eyes.', S(D(124, 100, 6), D(156, 100, 6))],
+      ['Draw a long, curly trunk.', P('M130 140 C 126 178, 112 196, 92 194 M150 141 C 148 188, 124 212, 90 208 M92 194 Q82 200 90 208')],
+      ['Draw a big oval for the body.', E(190, 198, 62, 44)],
+      ['Add two sturdy legs.', S(P('M152 228 L152 262 L174 262 L174 238'), P('M206 240 L206 262 L228 262 L228 232'))],
+      ['Add a little tail.', P('M252 192 Q270 202 264 222')],
+    ] },
+  { id: 'frog', name: 'Frog', level: 'mid',
+    idea: 'Draw a pond around your frog. Is there a fly nearby?',
+    steps: [
+      ['Draw two circles for the eyes.', S(C(112, 84, 24), C(188, 84, 24))],
+      ['Draw a wide oval for the head.', E(150, 120, 72, 42)],
+      ['Colour in the middle of each eye.', S(D(112, 84, 10), D(188, 84, 10))],
+      ['Add a big, wide smile.', P('M108 128 Q150 160 192 128')],
+      ['Draw a round body.', E(150, 196, 58, 48)],
+      ['Add two long oval legs.', S(E(94, 222, 20, 38), E(206, 222, 20, 38))],
+      ['Draw three little toes on each foot.', S(C(82, 262, 6), C(95, 268, 6), C(108, 262, 6), C(192, 262, 6), C(205, 268, 6), C(218, 262, 6))],
+      ['Sit your frog on a lily pad.', P('M30 272 Q150 298 270 272 Q150 250 30 272 Z', 'scene')],
+    ] },
+  { id: 'ladybug', name: 'Ladybug', level: 'mid',
+    idea: 'How many spots does your ladybug have? Draw a flower for it to visit.',
+    steps: [
+      ['Draw a circle for the head.', C(150, 84, 30)],
+      ['Add two small eyes.', S(D(140, 80, 5), D(160, 80, 5))],
+      ['Draw a big circle for the body.', C(150, 178, 70)],
+      ['Draw a line down the middle of the body.', L(150, 108, 150, 248)],
+      ['Add spots on both sides.', S(D(120, 150, 10), D(180, 150, 10), D(114, 195, 9), D(186, 195, 9), D(132, 230, 7), D(168, 230, 7))],
+      ['Draw two curly antennae.', S(P('M140 58 Q130 36 118 32'), P('M160 58 Q170 36 182 32'), D(118, 32, 5), D(182, 32, 5))],
+      ['Add three little legs on each side.', S(L(82, 152, 62, 142), L(80, 180, 58, 182), L(86, 210, 66, 224), L(218, 152, 238, 142), L(220, 180, 242, 182), L(214, 210, 234, 224))],
+    ] },
+  { id: 'rabbit', name: 'Rabbit', level: 'mid',
+    idea: 'Rabbits love vegetables. Can you draw a carrot for yours?',
+    steps: [
+      ['Draw an oval for the head.', E(150, 122, 46, 38)],
+      ['Add two long ears.', S(E(128, 56, 13, 38), E(172, 56, 13, 38))],
+      ['Draw the inside of each ear.', S(E(128, 58, 6, 26), E(172, 58, 6, 26))],
+      ['Add two eyes and a little nose.', S(D(133, 116, 6), D(167, 116, 6), P('M145 130 L155 130 L150 137 Z'))],
+      ['Draw a smile.', P('M150 137 Q143 147 136 142 M150 137 Q157 147 164 142')],
+      ['Draw a bigger oval for the body.', E(150, 208, 56, 50)],
+      ['Add two oval feet.', S(E(120, 256, 26, 10), E(180, 256, 26, 10))],
+      ['Finish with a fluffy round tail.', C(206, 214, 14)],
+    ] },
+  { id: 'pig', name: 'Pig', level: 'hard',
+    idea: 'Pigs love mud! Draw a muddy puddle for your pig to play in.',
+    steps: [
+      ['Draw a circle for the head.', C(112, 128, 50)],
+      ['Draw a big oval for the body.', E(190, 170, 74, 54)],
+      ['Add a snout with two nostrils.', S(E(84, 146, 22, 16), D(77, 146, 4), D(91, 146, 4))],
+      ['Draw two triangle ears.', S(P('M86 90 L80 60 L108 80'), P('M132 82 L144 56 L152 88'))],
+      ['Add two eyes.', S(D(100, 118, 6), D(130, 116, 6))],
+      ['Draw four rectangle legs.', S(P('M140 208 L140 250 L158 250 L158 214'), P('M170 220 L170 256 L188 256 L188 222'), P('M212 220 L212 256 L230 256 L230 220'), P('M240 210 L240 250 L258 250 L258 206'))],
+      ['Finish with a curly tail.', P('M263 160 C 284 148, 290 178, 272 178 C 258 178, 264 158, 284 154')],
+    ] },
+  { id: 'giraffe', name: 'Giraffe', level: 'hard',
+    idea: 'Giraffes eat leaves from tall trees. Draw a tree next to yours.',
+    steps: [
+      ['Draw an oval for the body.', E(185, 188, 66, 36)],
+      ['Draw a small oval for the head.', E(92, 66, 30, 22)],
+      ['Join them with a long neck.', S(L(104, 86, 138, 164), L(120, 78, 162, 156))],
+      ['Add four long legs.', S(L(138, 214, 138, 272), L(162, 222, 162, 272), L(208, 222, 208, 272), L(232, 214, 232, 272))],
+      ['Draw an eye and a smile.', S(D(88, 60, 5), P('M70 74 Q80 84 94 80'))],
+      ['Add two little horns.', S(L(84, 46, 80, 28), L(100, 46, 104, 28), D(80, 26, 5), D(104, 26, 5))],
+      ['Add a swishy tail.', P('M250 180 Q268 196 262 222')],
+      ['Decorate your giraffe with spots.', S(C(165, 180, 9), C(200, 196, 8), C(226, 178, 9), C(184, 204, 6), C(126, 120, 6), C(142, 146, 6))],
+    ] },
+];
+
+const BY_ID = Object.fromEntries(ANIMALS.map(a => [a.id, a]));
+const withArticle = name => (/^[aeiou]/i.test(name) ? 'an ' : 'a ') + name.toLowerCase();
+const nameOf = id => (BY_ID[id] ? BY_ID[id].name : 'Free drawing');
+
+/* Build SVG markup for an animal up to step `upto` (inclusive); step `upto` is highlighted. */
+function artMarkup(animal, upto = animal.steps.length - 1, highlight = false) {
+  return animal.steps.map(([, shapes], i) => {
+    const state = i < upto || (i === upto && !highlight) ? 'done' : i === upto ? 'now' : 'later';
+    return `<g class="${state}">${shapes}</g>`;
+  }).join('');
+}
+
+/* ---------------- views and routing ---------------- */
+const $ = id => document.getElementById(id);
+const views = ['home', 'lesson', 'draw', 'gallery'];
+function show(view) {
+  views.forEach(v => $(v).classList.toggle('hidden', v !== view));
+  window.scrollTo(0, 0);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-go]');
+  if (t) location.hash = t.dataset.go;
+});
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.add('hidden'), 2200);
+}
+
+/* ---------------- home ---------------- */
+function renderHome() {
+  $('levels').innerHTML = LEVELS.map(level => `
+    <section class="level">
+      <h3>${level.name} <span class="stars" aria-label="${level.stars} of 3 stars">${'★'.repeat(level.stars)}</span></h3>
+      <div class="grid">
+        ${ANIMALS.filter(a => a.level === level.id).map(a => `
+          <button class="tile" data-go="#/learn/${a.id}">
+            <svg class="art" viewBox="0 0 300 300" aria-hidden="true">${artMarkup(a)}</svg>
+            <span>${a.name}</span>
+          </button>`).join('')}
+      </div>
+    </section>`).join('');
+  show('home');
+}
+
+/* ---------------- lesson ---------------- */
+let lesson = { animal: null, step: 0 };
+function renderLesson() {
+  const { animal, step } = lesson;
+  const total = animal.steps.length;
+  $('lesson-name').textContent = `How to draw ${withArticle(animal.name)}`;
+  $('lesson-art').setAttribute('aria-label', `${animal.name}, step ${step + 1}`);
+  $('lesson-art').innerHTML = artMarkup(animal, step, true);
+  $('step-count').textContent = `Step ${step + 1} of ${total}`;
+  $('step-say').textContent = animal.steps[step][0];
+  $('step-dots').innerHTML = animal.steps.map((_, i) => `<i class="${i < step ? 'done' : i === step ? 'here' : ''}"></i>`).join('');
+  $('prev').disabled = step === 0;
+  const last = step === total - 1;
+  $('next').textContent = last ? 'All done!' : 'Next step';
+  $('next').disabled = last;
+  $('idea').textContent = animal.idea;
+  $('idea').classList.toggle('hidden', !last);
+}
+$('prev').onclick = () => { if (lesson.step > 0) { lesson.step--; renderLesson(); } };
+$('next').onclick = () => { if (lesson.step < lesson.animal.steps.length - 1) { lesson.step++; renderLesson(); } };
+$('to-draw').onclick = () => { location.hash = `#/draw/${lesson.animal.id}`; };
+
+/* ---------------- drawing ---------------- */
+const CRAYONS = ['#26324A', '#FF6B1A', '#F0507D', '#FFC531', '#22A866', '#2F8FEA', '#8E5BD8', '#8B5A2B'];
+const SIZES = [6, 12, 22];
+const canvas = $('canvas');
+const ctx = canvas.getContext('2d');
+let pen = { color: CRAYONS[0], size: 1, eraser: false };
+let strokes = [];          // {color, size, eraser, pts: [[x,y],...]} with coordinates 0..1
+let current = null;
+let drawingAnimal = 'free';
+
+function paint(context, px, list) {
+  context.clearRect(0, 0, px, px);
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  for (const s of list) {
+    context.globalCompositeOperation = s.eraser ? 'destination-out' : 'source-over';
+    context.strokeStyle = s.color;
+    context.fillStyle = s.color;
+    context.lineWidth = SIZES[s.size] * px / 600;
+    if (s.pts.length === 1) {
+      const [x, y] = s.pts[0];
+      context.beginPath();
+      context.arc(x * px, y * px, context.lineWidth / 2, 0, Math.PI * 2);
+      context.fill();
+      continue;
+    }
+    context.beginPath();
+    context.moveTo(s.pts[0][0] * px, s.pts[0][1] * px);
+    for (let i = 1; i < s.pts.length - 1; i++) {
+      const [x1, y1] = s.pts[i], [x2, y2] = s.pts[i + 1];
+      context.quadraticCurveTo(x1 * px, y1 * px, (x1 + x2) / 2 * px, (y1 + y2) / 2 * px);
+    }
+    const end = s.pts[s.pts.length - 1];
+    context.lineTo(end[0] * px, end[1] * px);
+    context.stroke();
+  }
+  context.globalCompositeOperation = 'source-over';
+}
+function resizeCanvas() {
+  const px = Math.round(canvas.clientWidth * (window.devicePixelRatio || 1));
+  if (px && canvas.width !== px) { canvas.width = canvas.height = px; }
+  paint(ctx, canvas.width, strokes);
+}
+function point(e) {
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+}
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  current = { color: pen.color, size: pen.size, eraser: pen.eraser, pts: [point(e)] };
+  strokes.push(current);
+  paint(ctx, canvas.width, strokes);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!current) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+  for (const ev of evs) current.pts.push(point(ev));
+  paint(ctx, canvas.width, strokes);
+});
+const endStroke = () => { current = null; };
+canvas.addEventListener('pointerup', endStroke);
+canvas.addEventListener('pointercancel', endStroke);
+window.addEventListener('resize', () => { if (!$('draw').classList.contains('hidden')) resizeCanvas(); });
+
+function renderTools() {
+  $('crayons').innerHTML = CRAYONS.map(c =>
+    `<button class="crayon" style="--c:${c}" aria-label="Crayon colour ${c}" aria-pressed="${!pen.eraser && pen.color === c}" data-color="${c}"></button>`).join('');
+  $('sizes').innerHTML = SIZES.map((s, i) =>
+    `<button class="size" aria-label="${['Thin', 'Medium', 'Thick'][i]} line" aria-pressed="${pen.size === i}" data-size="${i}"><b style="width:${s}px;height:${s}px"></b></button>`).join('');
+  $('eraser').setAttribute('aria-pressed', pen.eraser);
+}
+$('crayons').onclick = e => { const b = e.target.closest('[data-color]'); if (b) { pen.color = b.dataset.color; pen.eraser = false; renderTools(); } };
+$('sizes').onclick = e => { const b = e.target.closest('[data-size]'); if (b) { pen.size = +b.dataset.size; renderTools(); } };
+$('eraser').onclick = () => { pen.eraser = !pen.eraser; renderTools(); };
+$('undo').onclick = () => { strokes.pop(); paint(ctx, canvas.width, strokes); };
+$('clear').onclick = () => {
+  if (strokes.length && confirm('Start over? This clears your drawing.')) { strokes = []; paint(ctx, canvas.width, strokes); }
+};
+$('guide-toggle').onclick = () => {
+  const on = $('guide-toggle').getAttribute('aria-pressed') !== 'true';
+  $('guide-toggle').setAttribute('aria-pressed', on);
+  $('guide').classList.toggle('hidden', !on);
+};
+$('draw-back').onclick = () => { history.length > 1 ? history.back() : (location.hash = '#/'); };
+
+function renderDraw(id) {
+  drawingAnimal = BY_ID[id] ? id : 'free';
+  const animal = BY_ID[drawingAnimal];
+  $('draw-name').textContent = animal ? `Draw ${withArticle(animal.name)}` : 'Free drawing';
+  $('guide').innerHTML = animal ? artMarkup(animal) : '';
+  $('guide-toggle').classList.toggle('hidden', !animal);
+  $('guide-toggle').setAttribute('aria-pressed', 'true');
+  $('guide').classList.toggle('hidden', !animal);
+  strokes = [];
+  renderTools();
+  show('draw');
+  requestAnimationFrame(resizeCanvas);
+}
+
+$('save').onclick = async () => {
+  if (!strokes.length) { toast('Draw something first!'); return; }
+  const px = 1024;
+  const layer = document.createElement('canvas');
+  layer.width = layer.height = px;
+  paint(layer.getContext('2d'), px, strokes);
+  const out = document.createElement('canvas');
+  out.width = out.height = px;
+  const o = out.getContext('2d');
+  o.fillStyle = '#FFFFFF';
+  o.fillRect(0, 0, px, px);
+  o.drawImage(layer, 0, 0);
+  $('save').disabled = true;
+  try {
+    const res = await fetch('/api/drawings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ animal: drawingAnimal, image: out.toDataURL('image/png') }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Save failed');
+    toast('Saved to my drawings!');
+  } catch (err) {
+    toast(`Couldn't save: ${err.message}. Check the server is running.`);
+  } finally {
+    $('save').disabled = false;
+  }
+};
+
+/* ---------------- gallery ---------------- */
+async function renderGallery() {
+  show('gallery');
+  const grid = $('gallery-grid');
+  grid.innerHTML = '';
+  let items = [];
+  try {
+    items = await (await fetch('/api/drawings')).json();
+  } catch {
+    grid.innerHTML = '<p class="empty">Couldn\'t load drawings. Check the server is running, then reload.</p>';
+    return;
+  }
+  $('gallery-empty').classList.toggle('hidden', items.length > 0);
+  grid.innerHTML = items.map(d => {
+    const when = new Date(d.created).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    return `<figure class="frame" style="margin:0">
+      <img src="${d.url}" alt="${nameOf(d.animal)} drawing from ${when}" loading="lazy" data-view="${d.url}">
+      <p><span>${nameOf(d.animal)}<br><small>${when}</small></span>
+      <button class="trash" aria-label="Delete this drawing" data-delete="${d.file}">🗑️</button></p>
+    </figure>`;
+  }).join('');
+}
+$('gallery-grid').onclick = async e => {
+  const del = e.target.closest('[data-delete]');
+  if (del) {
+    if (!confirm('Delete this drawing? This can\'t be undone.')) return;
+    const res = await fetch(`/api/drawings/${del.dataset.delete}`, { method: 'DELETE' });
+    toast(res.ok ? 'Drawing deleted' : 'Couldn\'t delete that drawing');
+    renderGallery();
+    return;
+  }
+  const img = e.target.closest('[data-view]');
+  if (img) { $('viewer-img').src = img.dataset.view; $('viewer-img').alt = img.alt; $('viewer').showModal(); }
+};
+$('viewer').onclick = () => $('viewer').close();
+
+/* ---------------- router ---------------- */
+function route() {
+  const [, view, id] = (location.hash || '#/').split('/');
+  if (view === 'learn' && BY_ID[id]) { lesson = { animal: BY_ID[id], step: 0 }; renderLesson(); show('lesson'); }
+  else if (view === 'draw') renderDraw(id);
+  else if (view === 'gallery') renderGallery();
+  else renderHome();
+}
+window.addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>

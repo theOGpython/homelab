@@ -1,0 +1,49 @@
+# =============================================================================
+# Drawing Club: step-by-step animal drawing for kids, at https://draw.<tailnet>.ts.net
+#
+#   app/server.py         tiny Python web server (standard library only)
+#   app/public/index.html tutorials, drawing canvas, gallery
+#   Saved drawings: /srv/data/drawings (PNG files)
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d --build
+# =============================================================================
+
+name: drawing-club
+
+services:
+
+  ts-draw:
+    image: tailscale/tailscale:stable
+    hostname: draw
+    container_name: ts-draw
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: draw
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/draw:/var/lib/tailscale
+      - ./tailscale/draw.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 8097:8000                      # LAN access
+    restart: unless-stopped
+
+  drawing-club:
+    build: ./app
+    image: local/drawing-club:1.0
+    container_name: drawing-club
+    network_mode: "service:ts-draw"
+    environment:
+      TZ: ${TZ}
+      DATA_DIR: /data
+    volumes:
+      - ${DATA_ROOT}/drawings:/data
+    depends_on:
+      - ts-draw
+    restart: unless-stopped
