@@ -119,6 +119,18 @@ services:
       - 8686:8686
     restart: unless-stopped
 
+  lazylibrarian:
+    image: lscr.io/linuxserver/lazylibrarian:latest
+    container_name: lazylibrarian
+    environment:
+      <<: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/lazylibrarian:/config
+      - ${DATA_ROOT}:/data             # downloads, audiobooks and the ebook ingest folder
+    ports:
+      - 5299:5299
+    restart: unless-stopped
+
   # Tailscale entry point for the download apps:
   # https://arr.<tailnet>.ts.net:<port> for each app
   ts-arr:

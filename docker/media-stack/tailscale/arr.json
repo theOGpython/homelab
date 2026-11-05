@@ -17,6 +17,9 @@
     },
     "8686": {
       "HTTPS": true
+    },
+    "5299": {
+      "HTTPS": true
     }
   },
   "Web": {
@@ -61,6 +64,13 @@
           "Proxy": "http://lidarr:8686"
         }
       }
+    },
+    "${TS_CERT_DOMAIN}:5299": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://lazylibrarian:5299"
+        }
+      }
     }
   },
   "AllowFunnel": {
@@ -69,6 +79,7 @@
     "${TS_CERT_DOMAIN}:8989": false,
     "${TS_CERT_DOMAIN}:7878": false,
     "${TS_CERT_DOMAIN}:6767": false,
-    "${TS_CERT_DOMAIN}:8686": false
+    "${TS_CERT_DOMAIN}:8686": false,
+    "${TS_CERT_DOMAIN}:5299": false
   }
 }
