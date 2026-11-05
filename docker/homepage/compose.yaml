@@ -47,6 +47,8 @@ services:
       HOMEPAGE_ALLOWED_HOSTS: "homepage.${TS_TAILNET},192.168.3.201:3010"
     volumes:
       - ./config:/app/config
+      - /srv/data:/mnt/media:ro
+      - /srv/photos:/mnt/photos:ro
     depends_on:
       - ts-homepage
     restart: unless-stopped
