@@ -1,10 +1,11 @@
-# Links use Tailscale addresses (work anywhere).
-# Widgets talk to services over the LAN; keys come from homepage.secret.
+# Homepage services. Links use Tailscale addresses (work anywhere); widgets and
+# status checks talk to services over the LAN. Keys come from homepage.secret.
 
 - Watch & Listen:
     - Jellyfin:
         icon: jellyfin.svg
         href: https://jellyfin.tailc33d1b.ts.net
+        description: Movies & TV
         siteMonitor: http://192.168.3.201:8096
         widget:
           type: jellyfin
@@ -16,6 +17,7 @@
     - Seerr:
         icon: jellyseerr.svg
         href: https://requests.tailc33d1b.ts.net
+        description: Request movies & shows
         siteMonitor: http://192.168.3.201:5055
         widget:
           type: seerr
@@ -24,25 +26,48 @@
     - Audiobookshelf:
         icon: audiobookshelf.svg
         href: https://books.tailc33d1b.ts.net
+        description: Audiobooks & podcasts
         siteMonitor: http://192.168.3.201:13378
         widget:
           type: audiobookshelf
           url: http://192.168.3.201:13378
           key: "{{HOMEPAGE_VAR_AUDIOBOOKSHELF_KEY}}"
+    - Navidrome:
+        icon: navidrome.svg
+        href: https://music.tailc33d1b.ts.net
+        description: Music library
+        siteMonitor: http://192.168.3.201:4533
+    - Octo:
+        icon: mdi-music-circle
+        href: https://octo.tailc33d1b.ts.net/admin
+        description: Music discovery (point apps at Octo)
+        siteMonitor: http://192.168.3.201:5274/admin
 
 - Library:
     - Immich:
         icon: immich.svg
         href: https://photos.tailc33d1b.ts.net
+        description: Photos
         siteMonitor: http://192.168.3.201:2283
         widget:
           type: immich
           url: http://192.168.3.201:2283
           key: "{{HOMEPAGE_VAR_IMMICH_KEY}}"
           version: 2
+    - Nextcloud:
+        icon: nextcloud.svg
+        href: https://cloud.tailc33d1b.ts.net
+        description: Files, calendar & contacts
+        siteMonitor: http://192.168.3.201:8091/status.php
+        widget:
+          type: nextcloud
+          url: http://192.168.3.201:8091
+          username: "{{HOMEPAGE_VAR_NEXTCLOUD_USER}}"
+          password: "{{HOMEPAGE_VAR_NEXTCLOUD_PASS}}"
     - Ebooks:
         icon: calibre-web.svg
         href: https://ebooks.tailc33d1b.ts.net
+        description: Calibre-Web Automated
         siteMonitor: http://192.168.3.201:8083
         widget:
           type: calibreweb
@@ -52,11 +77,18 @@
     - Files:
         icon: filebrowser.svg
         href: https://files.tailc33d1b.ts.net
+        description: Upload to the media library
         siteMonitor: http://192.168.3.201:8099
     - PDF Tools:
         icon: stirling-pdf.svg
         href: https://pdf.tailc33d1b.ts.net
+        description: Stirling PDF
         siteMonitor: http://192.168.3.201:8095
+    - Drawing Club:
+        icon: mdi-palette
+        href: https://draw.tailc33d1b.ts.net
+        description: Step-by-step animal drawing
+        siteMonitor: http://192.168.3.201:8097/healthz
 
 - Downloads:
     - Sonarr:
@@ -80,6 +112,14 @@
           type: lidarr
           url: http://192.168.3.201:8686
           key: "{{HOMEPAGE_VAR_LIDARR_KEY}}"
+    - LazyLibrarian:
+        icon: lazylibrarian.svg
+        href: https://arr.tailc33d1b.ts.net:5299
+        description: Audiobooks & ebooks
+        widget:
+          type: lazylibrarian
+          url: http://192.168.3.201:5299
+          key: "{{HOMEPAGE_VAR_LAZYLIBRARIAN_KEY}}"
     - Prowlarr:
         icon: prowlarr.svg
         href: https://arr.tailc33d1b.ts.net:9696
@@ -136,6 +176,7 @@
     - n8n:
         icon: n8n.svg
         href: https://n8n.tailc33d1b.ts.net
+        description: Automations
         siteMonitor: http://192.168.3.201:5678
 
 - System:
@@ -155,6 +196,16 @@
           type: uptimekuma
           url: http://192.168.3.201:3001
           slug: "{{HOMEPAGE_VAR_KUMA_SLUG}}"
+    - Glances:
+        icon: glances.svg
+        href: http://192.168.3.200:61208
+        description: Proxmox host stats
+        siteMonitor: http://192.168.3.200:61208
+    - Prometheus:
+        icon: prometheus.svg
+        href: http://192.168.3.201:9090
+        description: Metrics database
+        siteMonitor: http://192.168.3.201:9090/-/healthy
     - Homarr:
         icon: homarr.svg
         href: https://home.tailc33d1b.ts.net

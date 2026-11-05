@@ -1,21 +1,21 @@
 # Information widgets across the top of Homepage, shown left to right.
- 
+
 - search:
     provider: duckduckgo
     focus: true
     target: _blank
- 
+
 - greeting:
     text_size: xl
     text: Home
- 
+
 - datetime:
     text_size: l
     format:
       dateStyle: long
       timeStyle: short
       hour12: false
- 
+
 - openmeteo:
     label: Lagos               # change to your area's name
     latitude: 6.5244           # change to your home's coordinates
@@ -23,7 +23,7 @@
     timezone: Africa/Lagos
     units: metric
     cache: 15
- 
+
 # Whole server (Proxmox host), via Glances
 - glances:
     label: Proxmox host
@@ -34,22 +34,22 @@
     cputemp: true
     uptime: true
     disk: /
- 
+
 # The docker container (201) and its disks
 - resources:
     label: docker (201)
     cpu: true
     memory: true
     uptime: true
- 
+
 - resources:
     label: System disk
     disk: /
- 
+
 - resources:
     label: Media disk
     disk: /mnt/media
- 
+
 - resources:
     label: Photos disk
     disk: /mnt/photos
