@@ -120,6 +120,22 @@
           type: lazylibrarian
           url: http://192.168.3.201:5299
           key: "{{HOMEPAGE_VAR_LAZYLIBRARIAN_KEY}}"
+    - Bookshelf (audio):
+        icon: readarr.svg
+        href: https://arr.tailc33d1b.ts.net:8787
+        description: Audiobooks
+        widget:
+          type: readarr
+          url: http://192.168.3.201:8787
+          key: "{{HOMEPAGE_VAR_BOOKSHELF_AUDIO_KEY}}"
+    - Bookshelf (ebooks):
+        icon: readarr.svg
+        href: https://arr.tailc33d1b.ts.net:8788
+        description: Ebooks
+        widget:
+          type: readarr
+          url: http://192.168.3.201:8788
+          key: "{{HOMEPAGE_VAR_BOOKSHELF_EBOOK_KEY}}"
     - Prowlarr:
         icon: prowlarr.svg
         href: https://arr.tailc33d1b.ts.net:9696
