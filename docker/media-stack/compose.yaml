@@ -131,6 +131,31 @@ services:
       - 5299:5299
     restart: unless-stopped
 
+  # Bookshelf (Readarr revival, Hardcover metadata). One instance per book type.
+  bookshelf-audio:
+    image: ghcr.io/pennydreadful/bookshelf:hardcover
+    container_name: bookshelf-audio
+    environment:
+      <<: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/bookshelf-audio:/config
+      - ${DATA_ROOT}:/data             # root folder: /data/media/audiobooks
+    ports:
+      - 8787:8787
+    restart: unless-stopped
+
+  bookshelf-ebook:
+    image: ghcr.io/pennydreadful/bookshelf:hardcover
+    container_name: bookshelf-ebook
+    environment:
+      <<: *common-env
+    volumes:
+      - ${CONFIG_ROOT}/bookshelf-ebook:/config
+      - ${DATA_ROOT}:/data             # root folder: /data/media/books-ingest (Calibre-Web Automated)
+    ports:
+      - 8788:8787
+    restart: unless-stopped
+
   # Tailscale entry point for the download apps:
   # https://arr.<tailnet>.ts.net:<port> for each app
   ts-arr:
