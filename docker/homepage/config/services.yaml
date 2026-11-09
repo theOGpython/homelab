@@ -194,6 +194,11 @@
         href: https://n8n.tailc33d1b.ts.net
         description: Automations
         siteMonitor: http://192.168.3.201:5678
+    - Map:
+        icon: mdi-map-marker-radius
+        href: https://map.tailc33d1b.ts.net
+        description: Location history (Dawarich)
+        siteMonitor: http://192.168.3.201:3020/api/v1/health
 
 - System:
     - Proxmox:
