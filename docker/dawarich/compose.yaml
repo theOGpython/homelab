@@ -1,0 +1,143 @@
+# =============================================================================
+# Dawarich: self-hosted location history (Google Timeline alternative),
+# at https://map.<tailnet>.ts.net
+#
+# Based on Dawarich's official docker/docker-compose.yml (release 1.22.0), adapted:
+#   - Tailscale sidecar for private HTTPS access (phone apps report here)
+#   - version pinned; random DB password and secret key (setup-env.sh)
+#   - memory capped at 2 GB, logs capped, full-history re-detection skipped
+#
+# Read the release notes before updating: https://github.com/Freika/dawarich/releases
+#
+# Usage (inside the "docker" LXC):
+#   bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: dawarich
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+
+  ts-map:
+    image: tailscale/tailscale:stable
+    hostname: map
+    container_name: ts-map
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: map
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/map:/var/lib/tailscale
+      - ./tailscale/map.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 3020:3000                      # LAN access (3000/3001/3010 are taken)
+    restart: unless-stopped
+
+  dawarich_redis:
+    image: redis:8-alpine
+    container_name: dawarich_redis
+    command: redis-server --save 900 1 --save 300 10 --appendonly no
+    volumes:
+      - dawarich_shared:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    logging: *logging
+    restart: always
+
+  dawarich_db:
+    image: postgis/postgis:17-3.5-alpine
+    container_name: dawarich_db
+    shm_size: 1G
+    environment:
+      POSTGRES_USER: dawarich
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: dawarich_production
+    volumes:
+      - dawarich_db_data:/var/lib/postgresql/data
+      - dawarich_shared:/var/shared
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dawarich -d dawarich_production"]
+      interval: 10s
+      retries: 5
+      start_period: 30s
+      timeout: 10s
+    logging: *logging
+    restart: always
+
+  dawarich_app:
+    image: freikin/dawarich:1.22.0
+    container_name: dawarich_app
+    network_mode: "service:ts-map"
+    entrypoint: web-entrypoint.sh
+    command: ["bin/rails", "server", "-p", "3000", "-b", "::"]
+    stdin_open: true
+    tty: true
+    stop_grace_period: 60s
+    environment:
+      RAILS_ENV: production
+      REDIS_URL: redis://dawarich_redis:6379
+      DATABASE_HOST: dawarich_db
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: dawarich
+      DATABASE_PASSWORD: ${DB_PASSWORD}
+      DATABASE_NAME: dawarich_production
+      APPLICATION_HOSTS: "map.${TS_TAILNET},192.168.3.201,localhost,127.0.0.1,::1"
+      APPLICATION_PROTOCOL: http
+      TIME_ZONE: ${TZ}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      SELF_HOSTED: "true"
+      STORE_GEODATA: "true"
+      STORAGE_BACKEND: local
+      SIDEKIQ_EMBEDDED: "true"
+      WEB_CONCURRENCY: "0"
+      BACKGROUND_PROCESSING_CONCURRENCY: "2"
+      RAILS_LOG_TO_STDOUT: "true"
+      PROMETHEUS_EXPORTER_ENABLED: "false"
+      SKIP_VISITS_FLEET_REDETECT: "1"    # don't reprocess all history on upgrades (small server)
+    volumes:
+      - dawarich_public:/var/app/public
+      - dawarich_watched:/var/app/tmp/imports/watched
+      - dawarich_storage:/var/app/storage
+      - dawarich_db_data:/dawarich_db_data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO - http://127.0.0.1:3000/api/v1/health | grep -q '\"status\"\\s*:\\s*\"ok\"'"]
+      interval: 10s
+      retries: 30
+      start_period: 30s
+      timeout: 10s
+    logging: *logging
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
+    depends_on:
+      ts-map:
+        condition: service_started
+      dawarich_db:
+        condition: service_healthy
+      dawarich_redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dawarich_db_data:
+  dawarich_shared:
+  dawarich_public:
+  dawarich_watched:
+  dawarich_storage:
