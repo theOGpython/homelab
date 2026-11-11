@@ -181,6 +181,34 @@
               query: odu_download_rate_bytes * 8
               format:
                 type: bits
+    - Home Power:
+        icon: mdi-solar-power-variant
+        href: https://grafana.tailc33d1b.ts.net/d/home-power
+        description: Felicity inverter
+        widget:
+          type: prometheusmetric
+          url: http://192.168.3.201:9090
+          refreshInterval: 30000
+          metrics:
+            - label: Battery
+              query: felicity_battery_soc_percent
+              format:
+                type: percent
+            - label: Solar
+              query: felicity_pv_power_watts
+              format:
+                type: number
+                suffix: " W"
+            - label: Load
+              query: felicity_load_power_watts
+              format:
+                type: number
+                suffix: " W"
+            - label: Grid
+              query: felicity_grid_voltage_volts
+              format:
+                type: number
+                suffix: " V"
     - Home Assistant:
         icon: home-assistant.svg
         href: http://192.168.3.202:8123
