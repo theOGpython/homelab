@@ -1,0 +1,59 @@
+# Felicity inverter sensors for Home Assistant, read from the homelab exporter.
+# Paste into configuration.yaml (merge with any existing "rest:" section),
+# then Developer tools → YAML → Check configuration → Restart.
+
+rest:
+  - resource: http://192.168.3.201:9878/json
+    scan_interval: 30
+    sensor:
+      - name: "Inverter battery"
+        unique_id: felicity_battery_soc
+        value_template: "{{ value_json.bat_soc }}"
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+      - name: "Solar power"
+        unique_id: felicity_pv_power
+        value_template: "{{ value_json.pv_power }}"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+      - name: "House load"
+        unique_id: felicity_load_power
+        value_template: "{{ value_json.load_power }}"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+      - name: "Battery power"
+        unique_id: felicity_battery_power
+        value_template: "{{ value_json.bat_power }}"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+      - name: "Battery voltage"
+        unique_id: felicity_battery_voltage
+        value_template: "{{ value_json.bat_voltage }}"
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+      - name: "Grid voltage"
+        unique_id: felicity_grid_voltage
+        value_template: "{{ value_json.grid_voltage }}"
+        unit_of_measurement: "V"
+        device_class: voltage
+        state_class: measurement
+      - name: "Battery runtime at current draw"
+        unique_id: felicity_runtime
+        value_template: "{{ value_json.runtime_hours }}"
+        availability: "{{ value_json.runtime_hours is defined }}"
+        unit_of_measurement: "h"
+      - name: "Overnight runtime"
+        unique_id: felicity_night_runtime
+        value_template: "{{ value_json.night_runtime_hours }}"
+        availability: "{{ value_json.night_runtime_hours is defined }}"
+        unit_of_measurement: "h"
+    binary_sensor:
+      - name: "Grid power"
+        unique_id: felicity_grid_present
+        value_template: "{{ value_json.grid_present == 1 }}"
+        device_class: power
