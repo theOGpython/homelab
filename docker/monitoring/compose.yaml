@@ -36,6 +36,9 @@ services:
     environment:
       INVERTER_HOST: ${INVERTER_HOST:-192.168.3.119}
       POLL_SECONDS: 15
+      BATTERY_CAPACITY_WH: ${BATTERY_CAPACITY_WH:-2560}          # usable battery energy
+      BATTERY_RESERVE_PERCENT: ${BATTERY_RESERVE_PERCENT:-20}    # inverter cut-off SOC
+      INVERTER_OVERHEAD_W: ${INVERTER_OVERHEAD_W:-100}           # inverter self-consumption
       TZ: ${TZ}
     ports:
       - 9878:9878                        # LAN: /json for Home Assistant

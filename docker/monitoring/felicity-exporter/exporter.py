@@ -26,6 +26,10 @@ PORT = int(os.environ.get("INVERTER_PORT", "53970"))
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
 LISTEN_PORT = int(os.environ.get("EXPORTER_PORT", "9878"))
 QUERY = b"wifilocalMonitor:get dev real infor"
+# Battery facts the inverter doesn't report (set in .env)
+BATTERY_CAPACITY_WH = float(os.environ.get("BATTERY_CAPACITY_WH", "2560"))
+BATTERY_RESERVE_PERCENT = float(os.environ.get("BATTERY_RESERVE_PERCENT", "20"))
+INVERTER_OVERHEAD_W = float(os.environ.get("INVERTER_OVERHEAD_W", "100"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("felicity-exporter")
@@ -54,7 +58,13 @@ G = {
     "fault": Gauge("felicity_fault_code", "Fault code (0 = none)"),
     "work_mode": Gauge("felicity_work_mode", "Raw work mode code"),
     "load_percent_raw": Gauge("felicity_load_percent_raw", "Raw lPerc field (meaning unconfirmed)"),
+    "cfg_capacity": Gauge("felicity_battery_capacity_wh", "Configured usable battery capacity (Wh)"),
+    "cfg_reserve": Gauge("felicity_battery_reserve_percent", "Configured SOC at which the inverter stops discharging"),
+    "cfg_overhead": Gauge("felicity_inverter_overhead_watts", "Configured inverter self-consumption (W)"),
 }
+G["cfg_capacity"].set(BATTERY_CAPACITY_WH)
+G["cfg_reserve"].set(BATTERY_RESERVE_PERCENT)
+G["cfg_overhead"].set(INVERTER_OVERHEAD_W)
 
 latest = {}
 lock = threading.Lock()
@@ -134,6 +144,18 @@ def poll_once():
         latest.clear()
         latest.update({k: v for k, v in values.items() if v is not None})
         latest.update({f"temp_{i}": t for i, t in enumerate(temps, start=1)})
+        latest["capacity_wh"] = BATTERY_CAPACITY_WH
+        latest["reserve_percent"] = BATTERY_RESERVE_PERCENT
+        soc = values.get("bat_soc")
+        if soc is not None:
+            remaining = max(soc - BATTERY_RESERVE_PERCENT, 0) / 100 * BATTERY_CAPACITY_WH
+            latest["energy_left_wh"] = round(remaining)
+            bat = values.get("bat_power")
+            if bat is not None and bat < -10:
+                latest["runtime_hours"] = round(remaining / -bat, 2)
+            load = values.get("load_power")
+            if load is not None:
+                latest["night_runtime_hours"] = round(remaining / (load + INVERTER_OVERHEAD_W), 2)
         latest["updated"] = int(time.time())
 
 

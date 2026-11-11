@@ -402,7 +402,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 11,
         "w": 16,
         "h": 9
       },
@@ -478,7 +478,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 5,
+        "y": 11,
         "w": 8,
         "h": 9
       },
@@ -537,7 +537,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 20,
         "w": 24,
         "h": 6
       },
@@ -596,7 +596,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 20,
+        "y": 26,
         "w": 12,
         "h": 8
       },
@@ -665,7 +665,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 20,
+        "y": 26,
         "w": 12,
         "h": 8
       },
@@ -724,7 +724,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -809,7 +809,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 28,
+        "y": 34,
         "w": 12,
         "h": 8
       },
@@ -876,7 +876,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 36,
+        "y": 42,
         "w": 6,
         "h": 4
       },
@@ -954,7 +954,7 @@
       },
       "gridPos": {
         "x": 6,
-        "y": 36,
+        "y": 42,
         "w": 6,
         "h": 4
       },
@@ -1015,7 +1015,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 36,
+        "y": 42,
         "w": 6,
         "h": 4
       },
@@ -1076,7 +1076,7 @@
       },
       "gridPos": {
         "x": 18,
-        "y": 36,
+        "y": 42,
         "w": 6,
         "h": 4
       },
@@ -1120,6 +1120,200 @@
         },
         "colorMode": "value",
         "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Battery runtime at current draw",
+      "description": "Hours until the battery reaches the reserve, at the average battery discharge of the last 10 minutes (solar included). Shows 'Charging' when the battery isn't discharging.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(clamp_min(felicity_battery_soc_percent - felicity_battery_reserve_percent, 0) / 100 * felicity_battery_capacity_wh) / (-avg_over_time(felicity_battery_power_watts[10m]) > 10)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "green",
+                "value": 5
+              }
+            ]
+          },
+          "noValue": "Charging / not discharging"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 20,
+      "type": "stat",
+      "title": "Overnight runtime (no solar)",
+      "description": "Hours the battery would last with no solar and no grid, at the last hour's average house load plus the inverter's own consumption.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(clamp_min(felicity_battery_soc_percent - felicity_battery_reserve_percent, 0) / 100 * felicity_battery_capacity_wh) / (avg_over_time(felicity_load_power_watts[1h]) + felicity_inverter_overhead_watts)",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2
+              },
+              {
+                "color": "green",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Battery energy left (above reserve)",
+      "description": "Usable energy left before the inverter's cut-off, based on the configured capacity and reserve.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(clamp_min(felicity_battery_soc_percent - felicity_battery_reserve_percent, 0) / 100 * felicity_battery_capacity_wh) / 1000",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatth",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
         "textMode": "value",
         "justifyMode": "center"
       }
