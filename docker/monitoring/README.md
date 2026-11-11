@@ -54,3 +54,15 @@ Then disable key expiry for the new **grafana** machine in the Tailscale admin c
 Checks each service every 60 seconds and sends Telegram alerts on down/up. Monitors use **LAN addresses** (Kuma runs on the server itself). Notification: Telegram, reusing the n8n bot token and your chat ID.
 
 **Limitation:** Kuma runs on the same server it watches. If the whole server or container 201 goes down, it can't alert. An external heartbeat (e.g. healthchecks.io free tier, pinged by a cron job) covers that case.
+
+## Felicity inverter (local)
+
+`felicity-exporter` reads the inverter every 15 s through its WiFi dongle's **local** TCP/JSON
+protocol (`192.168.3.119:53970`), no cloud. Metrics: solar, battery (SOC, voltage, power:
+negative = discharging), house load, grid voltage/presence, temperatures, warnings/faults.
+
+- Grafana dashboard: **Home Power (Felicity inverter)**: power flow, battery, grid availability
+  (every power cut), daily solar/load kWh, grid hours per day.
+- Home Assistant: `http://192.168.3.201:9878/json` returns all values (REST sensors).
+- The dongle's address must stay fixed (DHCP reservation for `192.168.3.119` on the AX3S).
+  To change it, set `INVERTER_HOST` in `.env`.

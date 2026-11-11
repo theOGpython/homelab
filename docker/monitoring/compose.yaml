@@ -3,6 +3,7 @@
 #
 #   odu-exporter  polls the Huawei ODU every 60s (local network only, no
 #                 internet data used) and exposes metrics on :9877
+#   felicity-exporter  reads the inverter locally (TCP/JSON, port 53970) every 15s
 #   prometheus    stores the history (2 years by default)
 #   grafana       dashboards, at https://grafana.<tailnet>.ts.net
 #   uptime-kuma   service up/down checks + Telegram alerts, at https://status.<tailnet>.ts.net
@@ -26,6 +27,18 @@ services:
       ODU_PASSWORD: ${ODU_PASSWORD}
       POLL_SECONDS: 60
       TZ: ${TZ}
+    restart: unless-stopped
+
+  felicity-exporter:
+    build: ./felicity-exporter
+    image: local/felicity-exporter:1.0
+    container_name: felicity-exporter
+    environment:
+      INVERTER_HOST: ${INVERTER_HOST:-192.168.3.119}
+      POLL_SECONDS: 15
+      TZ: ${TZ}
+    ports:
+      - 9878:9878                        # LAN: /json for Home Assistant
     restart: unless-stopped
 
   prometheus:
