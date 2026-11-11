@@ -6,3 +6,8 @@ scrape_configs:
   - job_name: odu
     static_configs:
       - targets: ["odu-exporter:9877"]
+
+  - job_name: felicity
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["felicity-exporter:9878"]
