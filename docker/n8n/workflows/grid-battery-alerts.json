@@ -1,0 +1,111 @@
+{
+  "name": "Grid & battery alerts (Telegram)",
+  "nodes": [
+    {
+      "id": "64b0c6cf-4d78-4720-9cd0-ebd78f3258c7",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "154f0a59-a871-4c48-9d44-7fff2a7e942f",
+      "name": "Read inverter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "url": "http://192.168.3.201:9878/json",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "5941acba-b1ef-4125-86fc-2928618c6440",
+      "name": "Detect changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Grid on/off and battery-low alerts. State is remembered between runs\n// (only while the workflow is ACTIVE; manual test runs don't keep state).\nconst d = $input.first().json;\nconst s = $getWorkflowStaticData('global');\nconst LOW = 30;        // alert when battery falls to this % (grid off)\nconst RECOVER = 40;    // re-arm the low alert once back above this %\nconst now = Date.now();\nconst time = new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' });\nconst dur = (ms) => { const m = Math.round(ms / 60000), h = Math.floor(m / 60); return h ? `${h} h ${m % 60} min` : `${m} min`; };\nconst out = [];\n\nif (d.grid_present === undefined || d.bat_soc === undefined) return [];\nconst grid = d.grid_present >= 1;\nconst soc = Math.round(d.bat_soc);\n\nif (s.grid === undefined) {          // first run: just remember the current state\n  s.grid = grid; s.since = now;\n} else if (grid !== s.grid) {\n  const lasted = dur(now - s.since);\n  if (!grid) {\n    out.push(`\u26a1 Grid is OFF (${time}), after ${lasted} on.\\nBattery ${soc}%` +\n      (d.night_runtime_hours ? `: about ${d.night_runtime_hours} h at the current load without solar.` : '.'));\n  } else {\n    out.push(`\u2705 Grid is back (${time}) after ${lasted} off.\\nBattery ${soc}%.`);\n  }\n  s.grid = grid; s.since = now;\n}\n\nif (!grid && !s.lowSent && d.bat_soc <= LOW) {\n  out.push(`\ud83d\udd0b Battery low: ${soc}%` +\n    (d.runtime_hours ? `, about ${d.runtime_hours} h left at the current draw.` : '.') +\n    `\\nConsider switching off heavy appliances.`);\n  s.lowSent = true;\n}\nif (s.lowSent && d.bat_soc >= RECOVER) s.lowSent = false;\n\nreturn out.map(text => ({ json: { text } }));"
+      }
+    },
+    {
+      "id": "63b6bdd3-77d1-4bfd-899a-f14b2dd4e25e",
+      "name": "Send to me",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Read inverter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read inverter": {
+      "main": [
+        [
+          {
+            "node": "Detect changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect changes": {
+      "main": [
+        [
+          {
+            "node": "Send to me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos"
+  },
+  "pinData": {}
+}
