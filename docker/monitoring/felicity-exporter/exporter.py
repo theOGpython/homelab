@@ -27,9 +27,14 @@ POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
 LISTEN_PORT = int(os.environ.get("EXPORTER_PORT", "9878"))
 QUERY = b"wifilocalMonitor:get dev real infor"
 # Battery facts the inverter doesn't report (set in .env)
-BATTERY_CAPACITY_WH = float(os.environ.get("BATTERY_CAPACITY_WH", "2560"))
+BATTERY_CAPACITY_WH = float(os.environ.get("BATTERY_CAPACITY_WH", "5120"))
 BATTERY_RESERVE_PERCENT = float(os.environ.get("BATTERY_RESERVE_PERCENT", "20"))
 INVERTER_OVERHEAD_W = float(os.environ.get("INVERTER_OVERHEAD_W", "100"))
+# Electricity price, for valuing solar and costing grid use (EKEDC Band A by default)
+TARIFF_NGN_PER_KWH = float(os.environ.get("TARIFF_NGN_PER_KWH", "209.50"))
+TARIFF_VAT_PERCENT = float(os.environ.get("TARIFF_VAT_PERCENT", "7.5"))
+STATE_FILE = os.environ.get("STATE_FILE", "/state/energy.json")
+MAX_GAP_SECONDS = 120   # don't count energy across long polling gaps
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("felicity-exporter")
@@ -61,10 +66,65 @@ G = {
     "cfg_capacity": Gauge("felicity_battery_capacity_wh", "Configured usable battery capacity (Wh)"),
     "cfg_reserve": Gauge("felicity_battery_reserve_percent", "Configured SOC at which the inverter stops discharging"),
     "cfg_overhead": Gauge("felicity_inverter_overhead_watts", "Configured inverter self-consumption (W)"),
+    "grid_power": Gauge("felicity_grid_power_watts", "Grid input power (ACin[3][0])"),
+    "tariff": Gauge("felicity_tariff_ngn_per_kwh", "Electricity price incl. VAT (NGN per kWh)"),
+    "pv_kwh": Gauge("felicity_pv_energy_kwh_total", "Solar energy produced since tracking began (kWh)"),
+    "load_kwh": Gauge("felicity_load_energy_kwh_total", "House energy used since tracking began (kWh)"),
+    "grid_kwh": Gauge("felicity_grid_energy_kwh_total", "Grid energy imported since tracking began (kWh)"),
+    "tracking_start": Gauge("felicity_energy_tracking_start_timestamp_seconds", "When energy tracking began"),
 }
 G["cfg_capacity"].set(BATTERY_CAPACITY_WH)
 G["cfg_reserve"].set(BATTERY_RESERVE_PERCENT)
 G["cfg_overhead"].set(INVERTER_OVERHEAD_W)
+G["tariff"].set(round(TARIFF_NGN_PER_KWH * (1 + TARIFF_VAT_PERCENT / 100), 2))
+
+
+# ---- energy totals, integrated from power readings and saved to disk ----
+def load_energy():
+    try:
+        with open(STATE_FILE) as f:
+            e = json.load(f)
+        return {k: float(e.get(k, 0)) for k in ("pv_wh", "load_wh", "grid_wh")} | {"since": float(e.get("since", time.time()))}
+    except (OSError, ValueError):
+        return {"pv_wh": 0.0, "load_wh": 0.0, "grid_wh": 0.0, "since": time.time()}
+
+
+def save_energy(e):
+    try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        tmp = STATE_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(e, f)
+        os.replace(tmp, STATE_FILE)
+    except OSError as exc:
+        log.warning("Could not save energy totals: %s", exc)
+
+
+energy = load_energy()
+last_sample = {"t": None, "pv": None, "load": None, "grid": None}
+
+
+def publish_energy():
+    G["pv_kwh"].set(round(energy["pv_wh"] / 1000, 4))
+    G["load_kwh"].set(round(energy["load_wh"] / 1000, 4))
+    G["grid_kwh"].set(round(energy["grid_wh"] / 1000, 4))
+    G["tracking_start"].set(energy["since"])
+
+
+def accumulate(now, pv, load, grid):
+    """Trapezoid integration of power (W) into energy (Wh) between polls."""
+    prev = last_sample
+    if prev["t"] is not None and 0 < now - prev["t"] <= MAX_GAP_SECONDS:
+        hours = (now - prev["t"]) / 3600
+        for key, cur, old in (("pv_wh", pv, prev["pv"]), ("load_wh", load, prev["load"]), ("grid_wh", grid, prev["grid"])):
+            if cur is not None and old is not None:
+                energy[key] += max((cur + old) / 2, 0) * hours
+    last_sample.update(t=now, pv=pv, load=load, grid=grid)
+    save_energy(energy)
+    publish_energy()
+
+
+publish_energy()
 
 latest = {}
 lock = threading.Lock()
@@ -120,6 +180,7 @@ def decode(d):
         "load_va": first(d, "ACout", 3, 1),
         "grid_voltage": grid_v,
         "grid_present": None if grid_v is None else (1.0 if grid_v > 100 else 0.0),
+        "grid_power": first(d, "ACin", 3, 0),
         "bus_voltage": scale(float(d["busVp"]), 0.1) if d.get("busVp") is not None else None,
         "warn": float(d.get("warn", 0)),
         "fault": float(d.get("fault", 0)),
@@ -138,8 +199,10 @@ def poll_once():
             G[key].set(value)
     for i, t in enumerate(temps, start=1):
         G["temp"].labels(f"t{i}").set(t)
+    now = time.time()
+    accumulate(now, values.get("pv_power"), values.get("load_power"), values.get("grid_power"))
     G["up"].set(1)
-    G["last_success"].set(time.time())
+    G["last_success"].set(now)
     with lock:
         latest.clear()
         latest.update({k: v for k, v in values.items() if v is not None})
@@ -156,6 +219,10 @@ def poll_once():
             load = values.get("load_power")
             if load is not None:
                 latest["night_runtime_hours"] = round(remaining / (load + INVERTER_OVERHEAD_W), 2)
+        latest["pv_energy_kwh_total"] = round(energy["pv_wh"] / 1000, 3)
+        latest["load_energy_kwh_total"] = round(energy["load_wh"] / 1000, 3)
+        latest["grid_energy_kwh_total"] = round(energy["grid_wh"] / 1000, 3)
+        latest["tariff_ngn_per_kwh"] = round(TARIFF_NGN_PER_KWH * (1 + TARIFF_VAT_PERCENT / 100), 2)
         latest["updated"] = int(time.time())
 
 

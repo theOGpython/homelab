@@ -36,10 +36,14 @@ services:
     environment:
       INVERTER_HOST: ${INVERTER_HOST:-192.168.3.119}
       POLL_SECONDS: 15
-      BATTERY_CAPACITY_WH: ${BATTERY_CAPACITY_WH:-2560}          # usable battery energy
+      BATTERY_CAPACITY_WH: ${BATTERY_CAPACITY_WH:-5120}          # Felicity LPBF24200-M: 25.6 V x 200 Ah
       BATTERY_RESERVE_PERCENT: ${BATTERY_RESERVE_PERCENT:-20}    # inverter cut-off SOC
       INVERTER_OVERHEAD_W: ${INVERTER_OVERHEAD_W:-100}           # inverter self-consumption
+      TARIFF_NGN_PER_KWH: ${TARIFF_NGN_PER_KWH:-209.50}          # EKEDC Band A, before VAT
+      TARIFF_VAT_PERCENT: ${TARIFF_VAT_PERCENT:-7.5}
       TZ: ${TZ}
+    volumes:
+      - felicity-state:/state            # running energy totals survive restarts
     ports:
       - 9878:9878                        # LAN: /json for Home Assistant
     restart: unless-stopped
@@ -140,6 +144,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  felicity-state:
   prometheus-data:
   grafana-data:
   uptime-kuma-data:
