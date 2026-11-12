@@ -1153,7 +1153,7 @@
       "gridPos": {
         "x": 0,
         "y": 5,
-        "w": 8,
+        "w": 6,
         "h": 6
       },
       "targets": [
@@ -1219,9 +1219,9 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 8,
+        "x": 6,
         "y": 5,
-        "w": 8,
+        "w": 6,
         "h": 6
       },
       "targets": [
@@ -1286,9 +1286,9 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 16,
+        "x": 12,
         "y": 5,
-        "w": 8,
+        "w": 6,
         "h": 6
       },
       "targets": [
@@ -3914,6 +3914,72 @@
         "justifyMode": "center"
       },
       "description": "High cloud cover means lower solar output."
+    },
+    {
+      "id": 72,
+      "type": "stat",
+      "title": "Time to full charge",
+      "description": "Hours until the battery reaches 100%, at the average charging power of the last 10 minutes. LiFePO4 batteries charge more slowly over the last few percent, so the final stretch may take a little longer than shown.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 5,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "expr": "((100 - felicity_battery_soc_percent) / 100 * felicity_battery_capacity_wh) / (avg_over_time(felicity_battery_power_watts[10m]) > 10)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 1,
+          "noValue": "Not charging",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "mappings": [
+            {
+              "type": "range",
+              "options": {
+                "from": 0,
+                "to": 0.02,
+                "result": {
+                  "text": "Full",
+                  "color": "green",
+                  "index": 0
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
     }
   ]
 }
