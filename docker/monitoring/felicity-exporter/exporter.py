@@ -17,6 +17,7 @@ import os
 import socket
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
@@ -34,6 +35,18 @@ INVERTER_OVERHEAD_W = float(os.environ.get("INVERTER_OVERHEAD_W", "100"))
 TARIFF_NGN_PER_KWH = float(os.environ.get("TARIFF_NGN_PER_KWH", "209.50"))
 TARIFF_VAT_PERCENT = float(os.environ.get("TARIFF_VAT_PERCENT", "7.5"))
 STATE_FILE = os.environ.get("STATE_FILE", "/state/energy.json")
+INVERTER_RATED_W = float(os.environ.get("INVERTER_RATED_W", "3000"))
+BATTERY_NOMINAL_V = float(os.environ.get("BATTERY_NOMINAL_V", "25.6"))
+# Finances
+SYSTEM_COST_NGN = float(os.environ.get("SYSTEM_COST_NGN", "3000000"))
+GENERATOR_COST_NGN_PER_KWH = float(os.environ.get("GENERATOR_COST_NGN_PER_KWH", "750"))
+# Site and panels, for the solar forecast (Forecast.Solar) and outdoor weather (Open-Meteo)
+SITE_LAT = os.environ.get("SITE_LAT", "6.50")
+SITE_LON = os.environ.get("SITE_LON", "3.35")
+SOLAR_KWP = float(os.environ.get("SOLAR_KWP", "2.2"))
+PANEL_TILT = os.environ.get("PANEL_TILT", "10")        # degrees from horizontal
+PANEL_AZIMUTH = os.environ.get("PANEL_AZIMUTH", "0")   # Forecast.Solar: 0 = south, -90 = east, 90 = west
+WEATHER_ENABLED = os.environ.get("WEATHER_ENABLED", "true").lower() == "true"
 MAX_GAP_SECONDS = 120   # don't count energy across long polling gaps
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -72,10 +85,29 @@ G = {
     "load_kwh": Gauge("felicity_load_energy_kwh_total", "House energy used since tracking began (kWh)"),
     "grid_kwh": Gauge("felicity_grid_energy_kwh_total", "Grid energy imported since tracking began (kWh)"),
     "tracking_start": Gauge("felicity_energy_tracking_start_timestamp_seconds", "When energy tracking began"),
+    "chg_kwh": Gauge("felicity_battery_charge_energy_kwh_total", "Energy into the battery since tracking began (kWh)"),
+    "dis_kwh": Gauge("felicity_battery_discharge_energy_kwh_total", "Energy out of the battery since tracking began (kWh)"),
+    "cfg_rated": Gauge("felicity_inverter_rated_watts", "Configured inverter rating (W)"),
+    "cfg_nominal_v": Gauge("felicity_battery_nominal_volts", "Configured battery nominal voltage (V)"),
+    "cfg_cost": Gauge("felicity_system_cost_ngn", "Configured total system cost (NGN)"),
+    "cfg_gen": Gauge("felicity_generator_cost_ngn_per_kwh", "Configured generator running cost (NGN per kWh)"),
+    "cfg_kwp": Gauge("felicity_solar_kwp", "Configured solar array size (kWp)"),
+    "fc_today": Gauge("solar_forecast_today_kwh", "Forecast solar production today (kWh)"),
+    "fc_tomorrow": Gauge("solar_forecast_tomorrow_kwh", "Forecast solar production tomorrow (kWh)"),
+    "fc_ok": Gauge("solar_forecast_last_success_timestamp_seconds", "Last successful forecast update"),
+    "wx_temp": Gauge("weather_outdoor_temperature_celsius", "Outdoor temperature"),
+    "wx_hum": Gauge("weather_outdoor_humidity_percent", "Outdoor relative humidity"),
+    "wx_cloud": Gauge("weather_cloud_cover_percent", "Cloud cover"),
+    "wx_ok": Gauge("weather_last_success_timestamp_seconds", "Last successful weather update"),
 }
 G["cfg_capacity"].set(BATTERY_CAPACITY_WH)
 G["cfg_reserve"].set(BATTERY_RESERVE_PERCENT)
 G["cfg_overhead"].set(INVERTER_OVERHEAD_W)
+G["cfg_rated"].set(INVERTER_RATED_W)
+G["cfg_cost"].set(SYSTEM_COST_NGN)
+G["cfg_gen"].set(GENERATOR_COST_NGN_PER_KWH)
+G["cfg_kwp"].set(SOLAR_KWP)
+G["cfg_nominal_v"].set(BATTERY_NOMINAL_V)
 G["tariff"].set(round(TARIFF_NGN_PER_KWH * (1 + TARIFF_VAT_PERCENT / 100), 2))
 
 
@@ -84,9 +116,9 @@ def load_energy():
     try:
         with open(STATE_FILE) as f:
             e = json.load(f)
-        return {k: float(e.get(k, 0)) for k in ("pv_wh", "load_wh", "grid_wh")} | {"since": float(e.get("since", time.time()))}
+        return {k: float(e.get(k, 0)) for k in ("pv_wh", "load_wh", "grid_wh", "chg_wh", "dis_wh")} | {"since": float(e.get("since", time.time()))}
     except (OSError, ValueError):
-        return {"pv_wh": 0.0, "load_wh": 0.0, "grid_wh": 0.0, "since": time.time()}
+        return {"pv_wh": 0.0, "load_wh": 0.0, "grid_wh": 0.0, "chg_wh": 0.0, "dis_wh": 0.0, "since": time.time()}
 
 
 def save_energy(e):
@@ -101,7 +133,7 @@ def save_energy(e):
 
 
 energy = load_energy()
-last_sample = {"t": None, "pv": None, "load": None, "grid": None}
+last_sample = {"t": None, "pv": None, "load": None, "grid": None, "bat": None}
 
 
 def publish_energy():
@@ -109,9 +141,11 @@ def publish_energy():
     G["load_kwh"].set(round(energy["load_wh"] / 1000, 4))
     G["grid_kwh"].set(round(energy["grid_wh"] / 1000, 4))
     G["tracking_start"].set(energy["since"])
+    G["chg_kwh"].set(round(energy["chg_wh"] / 1000, 4))
+    G["dis_kwh"].set(round(energy["dis_wh"] / 1000, 4))
 
 
-def accumulate(now, pv, load, grid):
+def accumulate(now, pv, load, grid, bat=None):
     """Trapezoid integration of power (W) into energy (Wh) between polls."""
     prev = last_sample
     if prev["t"] is not None and 0 < now - prev["t"] <= MAX_GAP_SECONDS:
@@ -119,7 +153,10 @@ def accumulate(now, pv, load, grid):
         for key, cur, old in (("pv_wh", pv, prev["pv"]), ("load_wh", load, prev["load"]), ("grid_wh", grid, prev["grid"])):
             if cur is not None and old is not None:
                 energy[key] += max((cur + old) / 2, 0) * hours
-    last_sample.update(t=now, pv=pv, load=load, grid=grid)
+        if bat is not None and prev["bat"] is not None:
+            avg = (bat + prev["bat"]) / 2
+            energy["chg_wh" if avg > 0 else "dis_wh"] += abs(avg) * hours
+    last_sample.update(t=now, pv=pv, load=load, grid=grid, bat=bat)
     save_energy(energy)
     publish_energy()
 
@@ -200,7 +237,7 @@ def poll_once():
     for i, t in enumerate(temps, start=1):
         G["temp"].labels(f"t{i}").set(t)
     now = time.time()
-    accumulate(now, values.get("pv_power"), values.get("load_power"), values.get("grid_power"))
+    accumulate(now, values.get("pv_power"), values.get("load_power"), values.get("grid_power"), values.get("bat_power"))
     G["up"].set(1)
     G["last_success"].set(now)
     with lock:
@@ -222,6 +259,8 @@ def poll_once():
         latest["pv_energy_kwh_total"] = round(energy["pv_wh"] / 1000, 3)
         latest["load_energy_kwh_total"] = round(energy["load_wh"] / 1000, 3)
         latest["grid_energy_kwh_total"] = round(energy["grid_wh"] / 1000, 3)
+        latest["battery_discharge_kwh_total"] = round(energy["dis_wh"] / 1000, 3)
+        latest["battery_charge_kwh_total"] = round(energy["chg_wh"] / 1000, 3)
         latest["tariff_ngn_per_kwh"] = round(TARIFF_NGN_PER_KWH * (1 + TARIFF_VAT_PERCENT / 100), 2)
         latest["updated"] = int(time.time())
 
@@ -234,6 +273,51 @@ def poller():
             G["up"].set(0)
             log.warning("Poll failed: %s", exc)
         time.sleep(POLL_SECONDS)
+
+
+def fetch_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "homelab-felicity-exporter"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read())
+
+
+def update_forecast():
+    """Forecast.Solar free API (12 calls/hour limit; we call hourly)."""
+    url = (f"https://api.forecast.solar/estimate/watthours/day/"
+           f"{SITE_LAT}/{SITE_LON}/{PANEL_TILT}/{PANEL_AZIMUTH}/{SOLAR_KWP}")
+    days = sorted(fetch_json(url)["result"].items())
+    if days:
+        G["fc_today"].set(round(days[0][1] / 1000, 2))
+    if len(days) > 1:
+        G["fc_tomorrow"].set(round(days[1][1] / 1000, 2))
+    G["fc_ok"].set(time.time())
+
+
+def update_weather():
+    url = (f"https://api.open-meteo.com/v1/forecast?latitude={SITE_LAT}&longitude={SITE_LON}"
+           f"&current=temperature_2m,relative_humidity_2m,cloud_cover")
+    cur = fetch_json(url)["current"]
+    G["wx_temp"].set(cur["temperature_2m"])
+    G["wx_hum"].set(cur["relative_humidity_2m"])
+    G["wx_cloud"].set(cur["cloud_cover"])
+    G["wx_ok"].set(time.time())
+
+
+def weather_poller():
+    last_forecast = 0
+    while True:
+        try:
+            update_weather()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Weather update failed: %s", exc)
+        if time.time() - last_forecast >= 3600:
+            try:
+                update_forecast()
+                last_forecast = time.time()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Forecast update failed: %s", exc)
+                last_forecast = time.time() - 3000   # retry in ~10 minutes
+        time.sleep(900)   # weather every 15 minutes
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -259,5 +343,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     threading.Thread(target=poller, daemon=True).start()
+    if WEATHER_ENABLED:
+        threading.Thread(target=weather_poller, daemon=True).start()
     log.info("Polling %s:%d every %ds; serving on :%d", HOST, PORT, POLL_SECONDS, LISTEN_PORT)
     ThreadingHTTPServer(("0.0.0.0", LISTEN_PORT), Handler).serve_forever()

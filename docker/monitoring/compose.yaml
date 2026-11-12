@@ -41,6 +41,15 @@ services:
       INVERTER_OVERHEAD_W: ${INVERTER_OVERHEAD_W:-100}           # inverter self-consumption
       TARIFF_NGN_PER_KWH: ${TARIFF_NGN_PER_KWH:-209.50}          # EKEDC Band A, before VAT
       TARIFF_VAT_PERCENT: ${TARIFF_VAT_PERCENT:-7.5}
+      INVERTER_RATED_W: ${INVERTER_RATED_W:-3000}                # IVEM3024
+      BATTERY_NOMINAL_V: ${BATTERY_NOMINAL_V:-25.6}
+      SYSTEM_COST_NGN: ${SYSTEM_COST_NGN:-3000000}
+      GENERATOR_COST_NGN_PER_KWH: ${GENERATOR_COST_NGN_PER_KWH:-750}
+      SOLAR_KWP: ${SOLAR_KWP:-2.2}                               # 4 x 550 W
+      SITE_LAT: ${SITE_LAT:-6.50}                                # Surulere (approx.)
+      SITE_LON: ${SITE_LON:-3.35}
+      PANEL_TILT: ${PANEL_TILT:-10}
+      PANEL_AZIMUTH: ${PANEL_AZIMUTH:-0}                         # 0 = south, -90 = east, 90 = west
       TZ: ${TZ}
     volumes:
       - felicity-state:/state            # running energy totals survive restarts
