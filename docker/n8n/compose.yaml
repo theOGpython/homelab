@@ -55,6 +55,9 @@ services:
     image: docker.n8n.io/n8nio/n8n:latest
     container_name: n8n
     network_mode: "service:ts-n8n"
+    env_file:
+      - path: ../homepage/homepage.secret     # HOMEPAGE_VAR_* service API keys (gitignored)
+        required: false
     environment:
       # Database
       DB_TYPE: postgresdb
@@ -65,6 +68,8 @@ services:
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
       # Encrypts saved credentials. BACK THIS UP: without it, saved credentials are unrecoverable.
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      # Let Code nodes read the service API keys below via $env (keeps keys out of workflow files)
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       # URLs (so links and webhook URLs use the Tailscale HTTPS address)
       N8N_HOST: n8n.${TS_TAILNET}
       N8N_PROTOCOL: https
