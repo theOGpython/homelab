@@ -1,0 +1,248 @@
+{
+  "name": "Home power & services: alerts and updates (Telegram)",
+  "nodes": [
+    {
+      "id": "92f6bac8-531d-4cec-adc6-031d6fd78f4e",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8493c1b3-3376-4393-9edd-1cf5dba7cfa2",
+      "name": "Read inverter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "url": "http://192.168.3.201:9878/json",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "09bf8cce-0cd1-401c-9cfb-33f81f9e0c08",
+      "name": "Detect changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Grid on/off and battery-low alerts. State is remembered between runs\n// (only while the workflow is ACTIVE; manual test runs don't keep state).\nconst d = $input.first().json;\nconst s = $getWorkflowStaticData('global');\nconst LOW = 30;        // alert when battery falls to this % (grid off)\nconst RECOVER = 40;    // re-arm the low alert once back above this %\nconst now = Date.now();\nconst time = new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' });\nconst dur = (ms) => { const m = Math.round(ms / 60000), h = Math.floor(m / 60); return h ? `${h} h ${m % 60} min` : `${m} min`; };\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst out = [];\n\nif (d.grid_present === undefined || d.bat_soc === undefined) return [];\nconst grid = d.grid_present >= 1;\nconst soc = Math.round(d.bat_soc);\n\nif (s.grid === undefined) {          // first run: just remember the current state\n  s.grid = grid; s.since = now;\n} else if (grid !== s.grid) {\n  const lasted = dur(now - s.since);\n  if (!grid) {\n    out.push(`\u26a1 Grid is OFF (${time}), after ${lasted} on.\\nBattery ${soc}%` +\n      (d.night_runtime_hours ? `: about ${hm(d.night_runtime_hours)} at the current load without solar.` : '.'));\n  } else {\n    out.push(`\u2705 Grid is back (${time}) after ${lasted} off.\\nBattery ${soc}%.`);\n  }\n  s.grid = grid; s.since = now;\n}\n\nif (!grid && !s.lowSent && d.bat_soc <= LOW) {\n  out.push(`\ud83d\udd0b Battery low: ${soc}%` +\n    (d.runtime_hours ? `, about ${hm(d.runtime_hours)} left at the current draw.` : '.') +\n    `\\nConsider switching off heavy appliances.`);\n  s.lowSent = true;\n}\nif (s.lowSent && d.bat_soc >= RECOVER) s.lowSent = false;\n\nreturn out.map(text => ({ json: { text } }));"
+      }
+    },
+    {
+      "id": "c6140f27-5c02-4352-85d7-9b65478b9dae",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        220
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "07519d31-f94a-41d0-9eec-666107f91197",
+      "name": "Read inverter (hourly)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        220
+      ],
+      "parameters": {
+        "url": "http://192.168.3.201:9878/json",
+        "options": {
+          "timeout": 10000
+        }
+      }
+    },
+    {
+      "id": "648a1abe-68e1-44e5-a071-1ae38f0af654",
+      "name": "Hourly status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        220
+      ],
+      "parameters": {
+        "jsCode": "// Hourly status message from the inverter exporter.\nconst QUIET_HOURS = [];   // e.g. [0,1,2,3,4,5] to skip messages from midnight to 5am\nconst d = $input.first().json;\nconst hour = Number(new Date().toLocaleString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', hour12: false }));\nif (QUIET_HOURS.includes(hour) || d.bat_soc === undefined) return [];\n\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst w = (x) => `${Math.round(x)} W`;\nconst time = new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' });\nconst grid = d.grid_present >= 1;\n\nlet battery = `\ud83d\udd0b Battery ${Math.round(d.bat_soc)}%`;\nif (d.bat_power > 10) battery += ` (charging ${w(d.bat_power)})`;\nelse if (d.bat_power < -10) battery += ` (discharging ${w(-d.bat_power)})`;\n\nconst lines = [\n  `\ud83d\udd50 ${time} status`,\n  grid ? `\u26a1 Grid: ON` : `\u26a0\ufe0f Grid: OFF`,\n  battery,\n  `\u2600\ufe0f Solar ${w(d.pv_power ?? 0)} \u00b7 \ud83c\udfe0 Load ${w(d.load_power ?? 0)}`,\n];\n\nif (grid) {\n  if (d.night_runtime_hours !== undefined)\n    lines.push(`\u23f3 If the grid goes off: ~${hm(d.night_runtime_hours)} at this load (no solar)`);\n} else {\n  const parts = [];\n  if (d.night_runtime_hours !== undefined) parts.push(`~${hm(d.night_runtime_hours)} without solar`);\n  if (d.runtime_hours !== undefined) parts.push(`~${hm(d.runtime_hours)} at current draw`);\n  if (parts.length) lines.push(`\u23f3 Battery lasts ${parts.join(' \u00b7 ')}`);\n}\nreturn [{ json: { text: lines.join('\\n') } }];"
+      }
+    },
+    {
+      "id": "1007ab43-daac-4076-ac8d-fb3c648549af",
+      "name": "Every day at 9pm",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        440
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 21 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "8220bdee-35de-46c2-a4a9-3f04029eecd5",
+      "name": "Daily summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        440
+      ],
+      "parameters": {
+        "jsCode": "// Daily summary: power, internet, media and server stats since midnight (Lagos).\n// API keys come from homepage.secret via $env (never stored in this workflow).\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006', PROM = `${LAN}:9090/api/v1/query`;\nconst env = (k) => $env[`HOMEPAGE_VAR_${k}`] || '';\nconst helpers = this.helpers;\nconst http = (opts) => helpers.httpRequest({ json: true, timeout: 15000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst prom = async (expr) => {\n  const r = await http({ url: PROM, qs: { query: expr } });\n  const v = r?.data?.result?.[0]?.value?.[1];\n  return v === undefined ? null : Number(v);\n};\n\n// --- time window ---\nconst lagos = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst today = `${lagos.getFullYear()}-${pad(lagos.getMonth() + 1)}-${pad(lagos.getDate())}`;\nconst midnightISO = `${today}T00:00:00+01:00`;\nconst since = new Date(midnightISO).getTime();\nconst mins = Math.max(lagos.getHours() * 60 + lagos.getMinutes(), 1), W = `${mins}m`, H = mins / 60;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst naira = (n) => '\u20a6' + Math.round(n).toLocaleString('en-NG');\nconst list = (arr, max = 3) => arr.slice(0, max).join(', ') + (arr.length > max ? ` +${arr.length - max} more` : '');\nconst sonarrH = { 'X-Api-Key': env('SONARR_KEY') }, radarrH = { 'X-Api-Key': env('RADARR_KEY') }, lidarrH = { 'X-Api-Key': env('LIDARR_KEY') };\n\nconst tasks = {\n  power: safe(async () => Promise.all([\n    prom(`avg_over_time(felicity_grid_present[${W}]) * ${H}`),\n    prom(`resets(felicity_grid_present[${W}])`),\n    prom(`increase(felicity_pv_energy_kwh_total[${W}])`),\n    prom(`increase(felicity_load_energy_kwh_total[${W}])`),\n    prom(`felicity_battery_soc_percent`),\n    prom(`min_over_time(felicity_battery_soc_percent[${W}])`),\n    prom(`felicity_tariff_ngn_per_kwh`),\n    prom(`felicity_generator_cost_ngn_per_kwh`),\n  ])),\n  internet: safe(() => prom('odu_day_used_bytes')),\n  streaming: safe(async () => {\n    const q = (sql) => http({ method: 'POST', url: `${LAN}:8096/user_usage_stats/submit_custom_query`,\n      headers: { 'X-Emby-Token': env('JELLYFIN_KEY') }, body: { CustomQueryString: sql, ReplaceUserId: true } });\n    const day = `date(DateCreated) = '${today}'`;\n    const total = await q(`SELECT COALESCE(SUM(PlayDuration),0), COUNT(*) FROM PlaybackActivity WHERE ${day}`);\n    const top = await q(`SELECT ItemName, SUM(PlayDuration) AS s FROM PlaybackActivity WHERE ${day} GROUP BY ItemName ORDER BY s DESC LIMIT 3`);\n    return { seconds: Number(total.results?.[0]?.[0] || 0), plays: Number(total.results?.[0]?.[1] || 0),\n             top: (top.results || []).map(r => r[0]) };\n  }),\n  listening: safe(async () => {\n    const r = await http({ url: `${LAN}:13378/api/me/listening-stats`, headers: { Authorization: `Bearer ${env('AUDIOBOOKSHELF_KEY')}` } });\n    return Number(r?.days?.[today] || 0);\n  }),\n  episodes: safe(async () => {\n    const r = await http({ url: `${LAN}:8989/api/v3/history/since`, headers: sonarrH, qs: { date: midnightISO, includeSeries: true, includeEpisode: true } });\n    return r.filter(x => x.eventType === 'downloadFolderImported')\n            .map(x => `${x.series?.title ?? 'Unknown'} S${pad(x.episode?.seasonNumber ?? 0)}E${pad(x.episode?.episodeNumber ?? 0)}`);\n  }),\n  movies: safe(async () => {\n    const r = await http({ url: `${LAN}:7878/api/v3/history/since`, headers: radarrH, qs: { date: midnightISO, includeMovie: true } });\n    return [...new Set(r.filter(x => x.eventType === 'downloadFolderImported').map(x => x.movie?.title ?? 'Unknown'))];\n  }),\n  music: safe(async () => {\n    const r = await http({ url: `${LAN}:8686/api/v1/history/since`, headers: lidarrH, qs: { date: midnightISO, includeAlbum: true, includeArtist: true } });\n    const tracks = r.filter(x => x.eventType === 'trackFileImported');\n    return { tracks: tracks.length, albums: [...new Set(tracks.map(x => `${x.album?.title ?? '?'} (${x.artist?.artistName ?? '?'})`))] };\n  }),\n  tomorrow: safe(async () => {\n    const start = new Date(since + 86400000).toISOString(), end = new Date(since + 2 * 86400000).toISOString();\n    const r = await http({ url: `${LAN}:8989/api/v3/calendar`, headers: sonarrH, qs: { start, end, includeSeries: true } });\n    return r.map(x => `${x.series?.title ?? 'Unknown'} S${pad(x.seasonNumber)}E${pad(x.episodeNumber)}`);\n  }),\n  requests: safe(async () => {\n    const r = await http({ url: `${LAN}:5055/api/v1/request`, headers: { 'X-Api-Key': env('SEERR_KEY') }, qs: { take: 100, skip: 0, sort: 'added', filter: 'all' } });\n    return (r.results || []).filter(x => new Date(x.createdAt).getTime() >= since).length;\n  }),\n  photos: safe(async () => http({ url: `${LAN}:2283/api/server/statistics`, headers: { 'x-api-key': env('IMMICH_KEY') } })),\n  server: safe(async () => {\n    const h = { Authorization: `PVEAPIToken=${env('PROXMOX_TOKEN_ID')}=${env('PROXMOX_TOKEN_SECRET')}` };\n    const get = (path) => http({ url: `${PVE}/api2/json${path}`, headers: h, skipSslCertificateValidation: true }).then(r => r.data);\n    const [pool, ct, node] = await Promise.all([get('/nodes/pve/storage/local-lvm/status'), get('/nodes/pve/lxc/201/status/current'), get('/nodes/pve/status')]);\n    return { pool: pool.used / pool.total * 100, disk: ct.disk / ct.maxdisk * 100, uptime: node.uptime };\n  }),\n};\nconst r = Object.fromEntries(await Promise.all(Object.entries(tasks).map(async ([k, p]) => [k, await p])));\n\n// --- build the message ---\nconst day = lagos.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });\nconst L = [`\ud83d\udcca Daily summary: ${day}`];\n\nif (r.power) {\n  const [gridH, outages, solar, load, socNow, socMin, tariff, gen] = r.power;\n  if (gridH !== null) L.push(`\u26a1 Grid: ${hm(gridH)}` + (outages !== null ? ` (${outages} power cut${outages === 1 ? '' : 's'})` : ''));\n  if (solar !== null) L.push(`\u2600\ufe0f Solar ${solar.toFixed(1)} kWh \u00b7 \ud83c\udfe0 Used ${load?.toFixed(1) ?? '?'} kWh`);\n  if (solar !== null && tariff) L.push(`\ud83d\udcb0 Solar saved ${naira(solar * tariff)} vs grid` + (gen ? ` (${naira(solar * gen)} vs generator)` : ''));\n  if (socNow !== null) L.push(`\ud83d\udd0b Battery now ${Math.round(socNow)}%` + (socMin !== null ? ` (lowest today ${Math.round(socMin)}%)` : ''));\n}\nif (r.internet !== null) L.push(`\ud83d\udcf6 Internet today: ${(r.internet / 1e9).toFixed(1)} GB`);\n\nconst media = [];\nif (r.streaming && r.streaming.seconds > 0) media.push(`\ud83c\udfac Streamed ${hm(r.streaming.seconds / 3600)} on Jellyfin (${r.streaming.plays} play${r.streaming.plays === 1 ? '' : 's'})` + (r.streaming.top.length ? `\\n    Top: ${list(r.streaming.top)}` : ''));\nif (r.listening) media.push(`\ud83c\udfa7 Listened to audiobooks for ${hm(r.listening / 3600)}`);\nconst got = [];\nif (r.episodes?.length) got.push(`${r.episodes.length} episode${r.episodes.length === 1 ? '' : 's'}`);\nif (r.movies?.length) got.push(`${r.movies.length} movie${r.movies.length === 1 ? '' : 's'}`);\nif (r.music?.tracks) got.push(`${r.music.tracks} track${r.music.tracks === 1 ? '' : 's'}`);\nif (got.length) {\n  media.push(`\ud83d\udce5 New today: ${got.join(', ')}`);\n  if (r.movies?.length) media.push(`    Movies: ${list(r.movies)}`);\n  if (r.episodes?.length) media.push(`    Shows: ${list([...new Set(r.episodes.map(e => e.replace(/ S\\d+E\\d+$/, '')))])}`);\n  if (r.music?.albums?.length) media.push(`    Music: ${list(r.music.albums, 2)}`);\n}\nif (r.requests) media.push(`\ud83d\ude4b ${r.requests} new request${r.requests === 1 ? '' : 's'} in Seerr`);\nif (r.tomorrow?.length) media.push(`\ud83d\udcc5 Tomorrow: ${list(r.tomorrow)}`);\n\nconst s = $getWorkflowStaticData('global');\nif (r.photos) {\n  const prev = s.immich;\n  if (prev && prev.date !== today) {\n    const p = r.photos.photos - prev.photos, v = r.photos.videos - prev.videos;\n    if (p > 0 || v > 0) media.push(`\ud83d\udcf8 ${p} photo${p === 1 ? '' : 's'}` + (v ? ` and ${v} video${v === 1 ? '' : 's'}` : '') + ' backed up to Immich');\n  }\n  s.immich = { date: today, photos: r.photos.photos, videos: r.photos.videos };\n}\nif (media.length) L.push('', ...media);\n\nif (r.server) {\n  const flag = (x) => (x >= 80 ? ' \u26a0\ufe0f' : '');\n  L.push('', `\ud83d\udcbe Storage pool ${Math.round(r.server.pool)}%${flag(r.server.pool)} \u00b7 docker disk ${Math.round(r.server.disk)}%${flag(r.server.disk)}`,\n            `\ud83d\udda5\ufe0f Server up ${Math.floor(r.server.uptime / 86400)} d ${Math.floor(r.server.uptime % 86400 / 3600)} h`);\n  if (r.server.pool >= 80 || r.server.disk >= 80) L.push('\u26a0\ufe0f Free some space soon: delete watched media, then run pct fstrim 201.');\n}\nreturn [{ json: { text: L.join('\\n') } }];\n"
+      }
+    },
+    {
+      "id": "70bd25da-8ed5-44d5-83f9-60cb2c2e1fac",
+      "name": "Send to me",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        760,
+        220
+      ],
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Read inverter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read inverter": {
+      "main": [
+        [
+          {
+            "node": "Detect changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect changes": {
+      "main": [
+        [
+          {
+            "node": "Send to me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Read inverter (hourly)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read inverter (hourly)": {
+      "main": [
+        [
+          {
+            "node": "Hourly status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hourly status": {
+      "main": [
+        [
+          {
+            "node": "Send to me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every day at 9pm": {
+      "main": [
+        [
+          {
+            "node": "Daily summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily summary": {
+      "main": [
+        [
+          {
+            "node": "Send to me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos"
+  },
+  "pinData": {}
+}
