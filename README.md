@@ -61,7 +61,7 @@ flowchart LR
 | redacted | DHCP pool for phones, laptops, TVs |
 | redacted | Proxmox host `pve.home.arpa` (UI on `:8006`, Glances on `:61208`) |
 | redacted | CT 201 `docker` (all stacks) |
-| redacted | VM 202 Home Assistant (`:8123`) |
+| redacted | VM 202 Home Assistant (port 80) |
 | redacted | Felicity DTU dongle (DHCP reservation) |
 | redacted | Huawei ODU |
 
@@ -139,7 +139,7 @@ LAN ports are on CT 201 (address redacted) unless noted.
 | Uptime Kuma | Up/down checks + Telegram alerts | `status` | `:3001` | `monitoring` |
 | felicity-exporter | Inverter metrics + `/json` | — | `:9878` | `monitoring` |
 | n8n | Automations | `n8n` | `:5678` | `n8n` |
-| Home Assistant | Home automation | via subnet router | VM 202 `:8123` | VM |
+| Home Assistant | Home automation | via subnet router | VM 202 `:80` (not 8123) | VM |
 | Proxmox / Glances | Hypervisor / host stats | via subnet router | host `:8006` / `:61208` | host |
 
 ---
@@ -241,6 +241,7 @@ Update images: `docker compose pull && docker compose up -d`.
 | Homepage Jellyfin widget "Unexpected end of JSON" | `version: 2` in the widget |
 | Mac browser can't reach LAN, curl can | System Settings → Privacy & Security → **Local Network** → allow the browser |
 | Pasted command has `…` in a URL | Chat shortened the link; build URLs from variables |
+| Home Assistant refuses connections on `:8123` | HAOS installs from 2026.8 use **port 80**: use `http://<ha-address>` (port is set in Settings → System → Network) |
 
 ## 🤖 Automations (n8n → Telegram)
 
