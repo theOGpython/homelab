@@ -133,7 +133,6 @@ LAN ports are on CT 201 (address redacted) unless noted.
 | Service | Purpose | Tailnet | LAN | Stack |
 |---|---|---|---|---|
 | Homepage | Main dashboard (YAML) | `homepage` | `:3010` | `homepage` |
-| Homarr | Dashboard (UI) | `home` | `:7575` | `homarr` |
 | Grafana | Internet + Home Power dashboards | `grafana` | `:3000` | `monitoring` |
 | Prometheus | Metrics database | via subnet router | `:9090` | `monitoring` |
 | Uptime Kuma | Up/down checks + Telegram alerts | `status` | `:3001` | `monitoring` |
@@ -182,7 +181,7 @@ homelab/
     │   └── compose.vpn.yaml      # optional: qBittorrent through gluetun (Surfshark)
     ├── monitoring/               # odu-exporter, felicity-exporter, Prometheus, Grafana, Uptime Kuma
     ├── n8n/                      # n8n + workflows/ (Telegram automations)
-    ├── homepage/  homarr/
+    ├── homepage/
     ├── immich/  nextcloud/  navidrome/  octo/  calibre/  filebrowser/  stirling-pdf/
     └── drawing-club/  dawarich/
 ```
@@ -197,7 +196,7 @@ homelab/
 
 - Real values only on the server, in `.env` and `*.secret` files (gitignored). Homepage API keys live in `homepage.secret`.
 - Never commit passwords, API keys, auth keys, device serial numbers or IP addresses.
-- Keep in the password manager: n8n `N8N_ENCRYPTION_KEY`, Homarr `SECRET_ENCRYPTION_KEY`, Home Assistant backup key, Nextcloud admin, FileBrowser admin, slskd web login.
+- Keep in the password manager: n8n `N8N_ENCRYPTION_KEY`, Home Assistant backup key, Nextcloud admin, FileBrowser admin, slskd web login.
 - If a secret is ever committed: rotate it first, then clean history.
 
 ---
@@ -262,14 +261,13 @@ Airtel 5G is metered. qBittorrent: seeding stops on completion, low upload limit
 
 ## 🗺️ Roadmap
 
-**Done:** Proxmox · Tailscale · media stack + Lidarr + Bookshelf + LazyLibrarian · ODU usage monitoring · Felicity inverter monitoring (local) · Home Power dashboard with financials & forecast · Uptime Kuma · n8n Telegram automations · Immich · Home Assistant · FileBrowser · Calibre-Web Automated · Stirling PDF · Homepage (+ Glances) · Navidrome · Octo · Nextcloud · Drawing Club · Dawarich
+**Done:** Proxmox · Tailscale · media stack + Lidarr + Bookshelf + LazyLibrarian · ODU usage monitoring · Felicity inverter monitoring (local) · Home Power dashboard with financials & forecast · Uptime Kuma · n8n Telegram automations · Immich · Home Assistant · FileBrowser · Calibre-Web Automated · Stirling PDF · Homepage (+ Glances; Homarr retired) · Navidrome · Octo · Nextcloud · Drawing Club · Dawarich
 
 **Next**
 - [ ] Proxmox backups to external storage
 - [ ] Grow CT 201 rootfs after fstrim
 - [ ] Verify inverter grid-power field with the grid on
 - [ ] Panel direction/tilt and install date for forecast and ROI accuracy
-- [ ] Choose one dashboard (Homepage vs Homarr)
 - [ ] Surfshark VPN for qBittorrent (and optionally slskd)
 
 **Later:** Speedtest Tracker (3/day) · Subgen (CPU, Bazarr only) · SABnzbd (paid) · Loki logs · AdGuard Home · kids' sites via Cloudflare Pages · lazydocker
