@@ -1,0 +1,35 @@
+# Home Assistant dashboard card: Edit dashboard -> Add card -> Manual -> paste this.
+type: vertical-stack
+cards:
+  - type: gauge
+    entity: sensor.inverter_battery
+    name: Battery
+    severity:
+      green: 60
+      yellow: 30
+      red: 0
+  - type: glance
+    entities:
+      - entity: binary_sensor.grid_power
+        name: Grid
+      - entity: sensor.solar_power
+        name: Solar
+      - entity: sensor.house_load
+        name: Load
+      - entity: sensor.battery_power
+        name: Battery
+  - type: entities
+    entities:
+      - entity: sensor.overnight_runtime
+        name: Overnight runtime (no solar)
+      - entity: sensor.battery_runtime_at_current_draw
+        name: Runtime at current draw
+      - entity: sensor.battery_voltage
+      - entity: sensor.grid_voltage
+  - type: history-graph
+    title: Last 24 hours
+    hours_to_show: 24
+    entities:
+      - entity: sensor.solar_power
+      - entity: sensor.house_load
+      - entity: sensor.battery_power

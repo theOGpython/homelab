@@ -52,6 +52,43 @@ rest:
         value_template: "{{ value_json.night_runtime_hours }}"
         availability: "{{ value_json.night_runtime_hours is defined }}"
         unit_of_measurement: "h"
+      # --- Running totals from the exporter (kWh) for the Energy dashboard ---
+      - name: "Grid import power"
+        unique_id: felicity_grid_power
+        value_template: "{{ value_json.grid_power }}"
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+      - name: "Solar energy total"
+        unique_id: felicity_pv_energy_total
+        value_template: "{{ value_json.pv_energy_kwh_total }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+      - name: "House energy total"
+        unique_id: felicity_load_energy_total
+        value_template: "{{ value_json.load_energy_kwh_total }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+      - name: "Grid energy total"
+        unique_id: felicity_grid_energy_total
+        value_template: "{{ value_json.grid_energy_kwh_total }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+      - name: "Battery charge energy total"
+        unique_id: felicity_battery_charge_total
+        value_template: "{{ value_json.battery_charge_kwh_total }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
+      - name: "Battery discharge energy total"
+        unique_id: felicity_battery_discharge_total
+        value_template: "{{ value_json.battery_discharge_kwh_total }}"
+        unit_of_measurement: "kWh"
+        device_class: energy
+        state_class: total_increasing
     binary_sensor:
       - name: "Grid power"
         unique_id: felicity_grid_present
