@@ -1,0 +1,57 @@
+{
+  "name": "Server power via Telegram (shutdown / reboot / status)",
+  "nodes": [
+    {
+      "id": "b7bd33e4-98ae-4c88-9082-d3485ed44bbb",
+      "name": "Every 15 seconds",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dfea7ec1-d55d-455f-8313-b682af4cb823",
+      "name": "Check Telegram & act",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Telegram power commands for the Proxmox host, by polling the bot (n8n stays private).\n// Commands (only from TELEGRAM_CHAT_ID): /status, /shutdown, /reboot, /confirm <code>, /cancel, /help\nconst TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst PVE = 'https://192.168.3.200:8006/api2/json/nodes/pve';\nconst PVE_AUTH = `PVEAPIToken=${$env.HOMELAB_PVE_POWER_TOKEN_ID}=${$env.HOMELAB_PVE_POWER_TOKEN_SECRET}`;\nconst CONFIRM_SECONDS = 120;\nif (!TOKEN || !CHAT) throw new Error('Set HOMELAB_TELEGRAM_BOT_TOKEN and HOMELAB_TELEGRAM_CHAT_ID in docker/n8n/.env');\n\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst tg = (method, body) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/${method}`, body, json: true, timeout: 15000 });\nconst say = (text) => tg('sendMessage', { chat_id: CHAT, text });\nconst pve = (method, path, form) => helpers.httpRequest({\n  method, url: `${PVE}${path}`, headers: { Authorization: PVE_AUTH, ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) },\n  body: form, json: true, skipSslCertificateValidation: true, timeout: 15000 });\n\nconst res = await tg('getUpdates', { offset: s.offset ?? 0, timeout: 0, allowed_updates: ['message'] });\nconst updates = res.result || [];\nif (!updates.length) return [];\nconst firstRun = s.offset === undefined;\ns.offset = updates[updates.length - 1].update_id + 1;\nif (firstRun) return [{ json: { note: `skipped ${updates.length} old message(s) on first run` } }];   // never act on stale commands\n\nconst log = [];\nfor (const u of updates) {\n  const m = u.message;\n  if (!m || String(m.chat?.id) !== CHAT || typeof m.text !== 'string') continue;   // only your chat\n  const [cmd, arg] = m.text.trim().toLowerCase().split(/\\s+/);\n  const now = Date.now();\n\n  if (cmd === '/shutdown' || cmd === '/reboot') {\n    const code = String(Math.floor(1000 + Math.random() * 9000));\n    s.pending = { action: cmd.slice(1), code, expires: now + CONFIRM_SECONDS * 1000 };\n    await say(`\u26a0\ufe0f ${cmd === '/shutdown' ? 'Shut down' : 'Reboot'} the server?\\nEverything stops, including Home Assistant and all services` +\n      (cmd === '/shutdown' ? `, and it won't come back until you press the power button.` : '. It should be back in about 5 minutes.') +\n      `\\n\\nReply /confirm ${code} within ${CONFIRM_SECONDS / 60} minutes, or /cancel.`);\n    log.push(`asked to confirm ${cmd}`);\n  } else if (cmd === '/confirm') {\n    const p = s.pending;\n    if (!p || now > p.expires) { await say('Nothing to confirm (or it expired). Send /shutdown or /reboot again.'); s.pending = null; continue; }\n    if (arg !== p.code) { await say('\u274c Wrong code. Nothing happened.'); continue; }\n    s.pending = null;\n    await say(p.action === 'shutdown' ? '\ud83d\uded1 Shutting down gracefully now. Goodbye!' : '\ud83d\udd04 Rebooting gracefully now. Back in a few minutes.');\n    await pve('POST', '/status', `command=${p.action}`);\n    log.push(`${p.action} sent to Proxmox`);\n  } else if (cmd === '/cancel') {\n    s.pending = null; await say('\ud83d\udc4d Cancelled. Nothing will happen.'); log.push('cancelled');\n  } else if (cmd === '/status') {\n    let text = '\ud83d\udda5\ufe0f Server status';\n    try {\n      const st = (await pve('GET', '/status')).data;\n      text += `\\nUp ${Math.floor(st.uptime / 86400)} d ${Math.floor(st.uptime % 86400 / 3600)} h \u00b7 CPU ${Math.round(st.cpu * 100)}% \u00b7 RAM ${Math.round(st.memory.used / st.memory.total * 100)}%`;\n    } catch (e) { text += '\\n(Proxmox unavailable)'; }\n    try {\n      const d = await helpers.httpRequest({ url: 'http://192.168.3.201:9878/json', json: true, timeout: 10000 });\n      text += `\\n${d.grid_present >= 1 ? '\u26a1 Grid ON' : '\u26a0\ufe0f Grid OFF'} \u00b7 \ud83d\udd0b ${Math.round(d.bat_soc)}% \u00b7 \u2600\ufe0f ${Math.round(d.pv_power)} W \u00b7 \ud83c\udfe0 ${Math.round(d.load_power)} W`;\n    } catch (e) { /* inverter info optional */ }\n    await say(text); log.push('status');\n  } else if (cmd === '/help' || cmd === '/start') {\n    await say('Commands:\\n/status: server and power summary\\n/shutdown: graceful shutdown (asks to confirm)\\n/reboot: graceful reboot (asks to confirm)\\n/cancel: cancel a pending request');\n  }\n}\nreturn log.length ? [{ json: { handled: log } }] : [];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 seconds": {
+      "main": [
+        [
+          {
+            "node": "Check Telegram & act",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {}
+}
