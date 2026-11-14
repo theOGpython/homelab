@@ -70,6 +70,11 @@ services:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
       # Let Code nodes read the service API keys below via $env (keeps keys out of workflow files)
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # Telegram power control (values in docker/n8n/.env, gitignored)
+      HOMELAB_TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      HOMELAB_TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      HOMELAB_PVE_POWER_TOKEN_ID: ${PVE_POWER_TOKEN_ID:-}
+      HOMELAB_PVE_POWER_TOKEN_SECRET: ${PVE_POWER_TOKEN_SECRET:-}
       # URLs (so links and webhook URLs use the Tailscale HTTPS address)
       N8N_HOST: n8n.${TS_TAILNET}
       N8N_PROTOCOL: https
