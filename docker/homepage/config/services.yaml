@@ -256,7 +256,3 @@
         href: http://192.168.3.201:9090
         description: Metrics database
         siteMonitor: http://192.168.3.201:9090/-/healthy
-    - Homarr:
-        icon: homarr.svg
-        href: https://home.tailc33d1b.ts.net
-        siteMonitor: http://192.168.3.201:7575
