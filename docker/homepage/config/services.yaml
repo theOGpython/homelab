@@ -62,8 +62,7 @@
         widget:
           type: nextcloud
           url: http://192.168.3.201:8091
-          username: "{{HOMEPAGE_VAR_NEXTCLOUD_USER}}"
-          password: "{{HOMEPAGE_VAR_NEXTCLOUD_PASS}}"
+          key: "{{HOMEPAGE_VAR_NEXTCLOUD_TOKEN}}"     # serverinfo token (NC-Token), set with occ
     - Ebooks:
         icon: calibre-web.svg
         href: https://ebooks.tailc33d1b.ts.net
@@ -116,10 +115,7 @@
         icon: lazylibrarian.svg
         href: https://arr.tailc33d1b.ts.net:5299
         description: Audiobooks & ebooks
-        widget:
-          type: lazylibrarian
-          url: http://192.168.3.201:5299
-          key: "{{HOMEPAGE_VAR_LAZYLIBRARIAN_KEY}}"
+        siteMonitor: http://192.168.3.201:5299
     - Bookshelf (audio):
         icon: readarr.svg
         href: https://arr.tailc33d1b.ts.net:8787
@@ -136,6 +132,11 @@
           type: readarr
           url: http://192.168.3.201:8788
           key: "{{HOMEPAGE_VAR_BOOKSHELF_EBOOK_KEY}}"
+    - Sportarr:
+        icon: sportarr.png
+        href: https://arr.tailc33d1b.ts.net:1867
+        description: Sports events
+        siteMonitor: http://192.168.3.201:1867
     - Prowlarr:
         icon: prowlarr.svg
         href: https://arr.tailc33d1b.ts.net:9696
@@ -211,11 +212,11 @@
                 suffix: " V"
     - Home Assistant:
         icon: home-assistant.svg
-        href: http://192.168.3.202:8123
-        siteMonitor: http://192.168.3.202:8123
+        href: http://192.168.3.202
+        siteMonitor: http://192.168.3.202
         widget:
           type: homeassistant
-          url: http://192.168.3.202:8123
+          url: http://192.168.3.202
           key: "{{HOMEPAGE_VAR_HASS_TOKEN}}"
     - n8n:
         icon: n8n.svg
