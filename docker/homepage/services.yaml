@@ -83,6 +83,15 @@
         href: https://pdf.tailc33d1b.ts.net
         description: Stirling PDF
         siteMonitor: http://192.168.3.201:8095
+    - Linkwarden:
+        icon: linkwarden.svg
+        href: https://links.tailc33d1b.ts.net
+        description: Archived bookmarks
+        siteMonitor: http://192.168.3.201:3030
+        widget:
+          type: linkwarden
+          url: http://192.168.3.201:3030
+          key: "{{HOMEPAGE_VAR_LINKWARDEN_KEY}}"
     - Drawing Club:
         icon: mdi-palette
         href: https://draw.tailc33d1b.ts.net
@@ -182,6 +191,11 @@
               query: odu_download_rate_bytes * 8
               format:
                 type: bits
+    - Epilykos:
+        icon: mdi-lightning-bolt-circle
+        href: https://energy.tailc33d1b.ts.net
+        description: Live solar & battery dashboard
+        siteMonitor: http://192.168.3.201:3040/healthz
     - Home Power:
         icon: mdi-solar-power-variant
         href: https://grafana.tailc33d1b.ts.net/d/home-power
@@ -212,11 +226,11 @@
                 suffix: " V"
     - Home Assistant:
         icon: home-assistant.svg
-        href: http://192.168.3.202:8123
-        siteMonitor: http://192.168.3.202:8123
+        href: http://192.168.3.202
+        siteMonitor: http://192.168.3.202
         widget:
           type: homeassistant
-          url: http://192.168.3.202:8123
+          url: http://192.168.3.202
           key: "{{HOMEPAGE_VAR_HASS_TOKEN}}"
     - n8n:
         icon: n8n.svg
@@ -256,7 +270,3 @@
         href: http://192.168.3.201:9090
         description: Metrics database
         siteMonitor: http://192.168.3.201:9090/-/healthy
-    - Homarr:
-        icon: homarr.svg
-        href: https://home.tailc33d1b.ts.net
-        siteMonitor: http://192.168.3.201:7575
