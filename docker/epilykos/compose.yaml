@@ -1,0 +1,59 @@
+# =============================================================================
+# Epilykos: real-time solar / inverter / battery dashboard (installable app)
+# at https://energy.<tailnet>.ts.net
+#
+# Upstream: github.com/ashipaek0/epilykos (GPL-3.0). Adapted:
+#   - Tailscale sidecar for private HTTPS; LAN port 3040 (3000-3030 taken)
+#   - admin password set from .env (setup-env.sh) so nobody else can claim setup
+#   - TRUST_PROXY for the local Tailscale proxy (per-user login limits)
+#
+# Data source: the Felicity dongle directly (TCP/JSON, port 53970), alongside the
+# monitoring stack's felicity-exporter. Fallback: REST source http://192.168.3.201:9878/json
+#
+# Usage (inside the "docker" LXC):  bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: epilykos
+
+services:
+
+  ts-energy:
+    image: tailscale/tailscale:stable
+    hostname: energy
+    container_name: ts-energy
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: energy
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/energy:/var/lib/tailscale
+      - ./tailscale/energy.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 3040:3000                      # LAN access: dashboard, /settings, /editor
+    restart: unless-stopped
+
+  epilykos:
+    image: irunmole/epilykos:${EPILYKOS_TAG:-latest}
+    container_name: epilykos
+    network_mode: "service:ts-energy"
+    environment:
+      SETTINGS_PASSWORD: ${SETTINGS_PASSWORD}
+      TZ: Africa/Lagos
+      TRUST_PROXY: 127.0.0.1/32        # Tailscale Serve proxies from localhost
+    volumes:
+      - ${CONFIG_ROOT}/epilykos:/app/data
+      - /etc/localtime:/etc/localtime:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    depends_on:
+      - ts-energy
+    restart: unless-stopped
