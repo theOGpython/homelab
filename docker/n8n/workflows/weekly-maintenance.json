@@ -1,0 +1,56 @@
+{
+  "name": "Weekly maintenance digest (Sunday 6pm)",
+  "nodes": [
+    {
+      "id": "8ba4da2a-9fd7-4f0e-9729-fd05dcc6e3d0",
+      "name": "Sundays at 6pm",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * 0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "0e3618ad-60de-40ad-afdc-6d32ad871ced",
+      "name": "Build & send digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Weekly maintenance digest: storage trend, monitor health, release watch, open to-dos, update reminder.\nconst PINNED = [\n  { app: 'Immich', repo: 'immich-app/immich', file: 'docker/immich/setup-env.sh', re: /IMMICH_VERSION=(v?[\\d.]+)/, major: true },\n  { app: 'Nextcloud', repo: 'nextcloud/server', file: 'docker/nextcloud/compose.yaml', re: /nextcloud:(\\d+)/, major: true },\n  { app: 'Navidrome', repo: 'navidrome/navidrome', file: 'docker/navidrome/compose.yaml', re: /navidrome:(v?[\\d.]+)/ },\n  { app: 'Dawarich', repo: 'Freika/dawarich', file: 'docker/dawarich/compose.yaml', re: /dawarich:(v?[\\d.]+)/ },\n  { app: 'Octo', repo: 'winters27/octo', file: 'docker/octo/setup-env.sh', re: /OCTO_RELEASE=([\\w.\\-]+)/ },\n  { app: 'slskd', repo: 'slskd/slskd', file: 'docker/octo/docker-compose.override.yml', re: /slskd:(v?[\\d.]+)/ },\n  { app: 'gluetun', repo: 'qdm12/gluetun', file: 'docker/media-stack/compose.vpn.yaml', re: /gluetun:(v?[\\d.]+)/ },\n  { app: 'Linkwarden', repo: 'linkwarden/linkwarden', file: 'docker/linkwarden/compose.yaml', re: /linkwarden:(v?[\\d.]+)/ },\n];\nconst norm = (v) => String(v || '').replace(/^v/, '');\nconst t = lagosNow();\nconst L = [`\ud83d\udee0\ufe0f Weekly homelab check: ${t.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`];\n\n// Storage, with change since last week\nconst st = await safe(async () => {\n  const [pool, ct, node] = await Promise.all([pveGet('/nodes/pve/storage/local-lvm/status'), pveGet('/nodes/pve/lxc/201/status/current'), pveGet('/nodes/pve/status')]);\n  return { pool: pool.used / pool.total * 100, disk: ct.disk / ct.maxdisk * 100, uptime: node.uptime };\n});\nif (st) {\n  const trend = (now, prev) => prev === undefined ? '' : ` (${now - prev >= 0 ? '+' : ''}${(now - prev).toFixed(0)} pts this week)`;\n  const flag = (x) => x >= 85 ? ' \ud83d\udd34' : x >= 80 ? ' \u26a0\ufe0f' : '';\n  L.push('', '\ud83d\udcbe Storage', `   Pool ${st.pool.toFixed(0)}%${flag(st.pool)}${trend(st.pool, s.pool)}`, `   Docker disk ${st.disk.toFixed(0)}%${flag(st.disk)}${trend(st.disk, s.disk)}`,\n    `   Server up ${Math.floor(st.uptime / 86400)} days`);\n  if (st.pool >= 80) L.push('   \u2192 Delete watched media (/delete) or remove unused stacks.');\n  s.pool = st.pool; s.disk = st.disk;\n}\n\n// Monitors (Uptime Kuma public status page)\nconst slug = $env.HOMEPAGE_VAR_KUMA_SLUG || 'home';\nconst kuma = await safe(async () => {\n  const [page, hb] = await Promise.all([get(`${LAN}:3001/api/status-page/${slug}`), get(`${LAN}:3001/api/status-page/heartbeat/${slug}`)]);\n  const names = {}; for (const g of page.publicGroupList || []) for (const m of g.monitorList || []) names[m.id] = m.name;\n  const issues = [];\n  for (const [id, name] of Object.entries(names)) {\n    const beats = hb.heartbeatList?.[id] || [], up = hb.uptimeList?.[`${id}_24`];\n    const last = beats[beats.length - 1];\n    if (last && last.status === 0) issues.push(`   \ud83d\udd34 ${name}: DOWN now`);\n    else if (up !== undefined && up < 0.99) issues.push(`   \ud83d\udfe1 ${name}: ${(up * 100).toFixed(1)}% up in the last 24 h`);\n  }\n  return { total: Object.keys(names).length, issues };\n});\nif (kuma) L.push('', `\ud83d\udce1 Monitors (${kuma.total})`, ...(kuma.issues.length ? kuma.issues : ['   \u2705 all healthy']));\n\n// Release watch for pinned apps (current version read from the repo, so it follows your bumps)\nconst rel = await safe(async () => {\n  const updates = [], current = [];\n  for (const p of PINNED) {\n    const file = await safe(() => gh(`/repos/${REPO}/contents/${p.file}`, { headers: { Accept: 'application/vnd.github.raw' }, json: false }));\n    const mine = typeof file === 'string' ? file.match(p.re)?.[1] : null;\n    if (!mine) continue;                          // stack not in the repo\n    const r = await safe(() => gh(`/repos/${p.repo}/releases/latest`));\n    if (!r?.tag_name) continue;\n    const newer = p.major ? parseInt(norm(r.tag_name)) > parseInt(norm(mine)) : norm(r.tag_name) !== norm(mine);\n    if (newer) updates.push(`   \u2b06\ufe0f ${p.app}: ${mine} \u2192 ${r.tag_name}${/breaking/i.test(r.body || '') ? ' \u26a0\ufe0f mentions breaking changes' : ''}\\n      ${r.html_url}`);\n    else current.push(p.app);\n  }\n  return { updates, current };\n});\nif (rel) L.push('', '\ud83d\udce6 Pinned apps', ...(rel.updates.length ? rel.updates : ['   \u2705 all on the latest release']), ...(rel.current.length && rel.updates.length ? [`   Up to date: ${rel.current.join(', ')}`] : []));\n\n// Open to-dos (GitHub issues labelled \"todo\")\nconst todos = await safe(() => gh(`/repos/${REPO}/issues`, { qs: { state: 'open', labels: 'todo', per_page: 10 } }));\nif (todos) L.push('', `\ud83d\udcdd To-dos (${todos.length}${todos.length === 10 ? '+' : ''} open)`, ...(todos.length ? todos.slice(0, 6).map(i => `   #${i.number} ${i.title}`) : ['   \ud83c\udf89 none']));\n\n// Monthly update reminder on the first Sunday\nif (t.getDate() <= 7) L.push('', '\ud83d\uddd3 First Sunday of the month: time for updates.', '   pct snapshot 201 before-updates \u2192 update-stacks.sh \u2192 check \u2192 pct delsnapshot 201 before-updates');\n\nawait say(L.join('\\n'));\nreturn [{ json: { sent: true } }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Sundays at 6pm": {
+      "main": [
+        [
+          {
+            "node": "Build & send digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos"
+  },
+  "pinData": {}
+}

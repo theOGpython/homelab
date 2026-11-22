@@ -1,0 +1,57 @@
+{
+  "name": "Power advice (solar surplus, low battery, 5pm grid-off)",
+  "nodes": [
+    {
+      "id": "7f446d48-ae85-4865-8fea-42da9d3ab432",
+      "name": "Every 2 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b59c3476-7ab0-49cc-aacc-0cc22f7800eb",
+      "name": "Check power & advise",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Power advice: solar surplus, grid-off low battery, heavy load, and the evening (5pm) grid-off warning.\nconst SURPLUS_W = 400, FULL_SOC = 95, LOW_SOC = 40, HEAVY_W = 2000, OVERHEAD_W = 100;\nconst d = await get(`${LAN}:9878/json`, { timeout: 10000 });\nif (d.bat_soc === undefined) return [];\nconst now = Date.now(), t = lagosNow(), hour = t.getHours() + t.getMinutes() / 60, today = ymd(t);\nconst grid = d.grid_present >= 1, soc = Math.round(d.bat_soc), pv = d.pv_power || 0, load = d.load_power || 0;\nconst spare = Math.round(pv - load - OVERHEAD_W);\nconst night = d.night_runtime_hours !== undefined ? hm(d.night_runtime_hours) : null;\nconst out = [];\n\n// 1) Solar to spare: battery full, daytime, surplus seen on two checks in a row, at most every 3 hours\nif (hour >= 9 && hour < 16 && soc >= FULL_SOC && spare >= SURPLUS_W) s.surplusSeen = (s.surplusSeen || 0) + 1; else s.surplusSeen = 0;\nif (s.surplusSeen >= 2 && now - (s.lastSurplus || 0) > 3 * 3600e3) {\n  out.push(`\u2600\ufe0f Battery ${soc}% and about ${spare} W of solar to spare. Good time for the iron, washing machine or pumping water.`);\n  s.lastSurplus = now;\n}\n\n// 2) Grid off and battery getting low: once per drop (re-arms above 50%)\nif (s.lowArmed === undefined) s.lowArmed = true;\nif (!grid && soc <= LOW_SOC && s.lowArmed) {\n  out.push(`\ud83d\udd0b Grid off and battery at ${soc}%. Avoid heavy appliances for now.` + (night ? `\\nAt the current load (${Math.round(load)} W) it lasts about ${night} without solar.` : ''));\n  s.lowArmed = false;\n}\nif (soc >= 50) s.lowArmed = true;\n\n// 3) Heavy load on battery (recommended max 2 kW): two checks in a row, at most every 30 minutes\nif (!grid && load >= HEAVY_W) s.heavySeen = (s.heavySeen || 0) + 1; else s.heavySeen = 0;\nif (s.heavySeen >= 2 && now - (s.lastHeavy || 0) > 30 * 60e3) {\n  out.push(`\u26a1 The house is drawing ${(load / 1000).toFixed(1)} kW from the battery (recommended max 2 kW). Switch something heavy off if you can.`);\n  s.lastHeavy = now;\n}\n\n// 4) Evening: from 5pm until 9pm, the first time the grid is off each day\nif (hour >= 17 && hour < 21 && !grid && s.eveningDate !== today) {\n  out.push(`\ud83c\udf07 The sun is setting and the grid is off. Battery ${soc}%, solar fading (${Math.round(pv)} W).\\nTo get through the night, switch off heavy loads: iron, kettle, AC, pumping machine.` +\n    (night ? `\\nAt the current load (${Math.round(load)} W) the battery lasts about ${night}.` : ''));\n  s.eveningDate = today;\n}\n\nfor (const text of out) await say(text);\nreturn out.length ? [{ json: { sent: out.length } }] : [];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every 2 minutes": {
+      "main": [
+        [
+          {
+            "node": "Check power & advise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {}
+}

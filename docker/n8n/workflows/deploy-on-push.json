@@ -1,0 +1,107 @@
+{
+  "name": "Deploy on push (homelab repo)",
+  "nodes": [
+    {
+      "id": "aa82fb3e-0220-41e8-a9d3-876a803a3338",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "2a9df1bd-61b5-475e-b48a-d51a1df86155",
+      "name": "Check GitHub for changes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Every few minutes: has the homelab repo changed? Work out which stacks to redeploy.\nconst IGNORE = [/\\.md$/i, /^docker\\/n8n\\/workflows\\//, /^pve\\//, /^host\\//];\nconst commits = await gh(`/repos/${REPO}/commits`, { qs: { sha: 'main', per_page: 1 } });\nconst head = commits?.[0]?.sha;\nif (!head) return [];\nif (!s.lastSha) { s.lastSha = head; return []; }          // first run: remember where we are\nif (head === s.lastSha) return [];\nconst cmp = await gh(`/repos/${REPO}/compare/${s.lastSha}...${head}`);\nconst files = (cmp.files || []).map(f => f.filename).filter(f => !IGNORE.some(re => re.test(f)));\nconst stacks = [...new Set(files.map(f => f.match(/^docker\\/([a-z0-9-]+)\\//)?.[1]).filter(Boolean))];\nconst messages = (cmp.commits || []).map(c => c.commit.message.split('\\n')[0]).filter(m => !/^Auto-sync|^sync/i.test(m)).slice(-3);\ns.lastSha = head;\nif (!files.length) return [];                              // only docs / Proxmox snapshots changed\nreturn [{ json: { command: stacks.length ? stacks.join(' ') : 'pull', stacks, messages, head: head.slice(0, 7) } }];\n"
+      }
+    },
+    {
+      "id": "9c9b2292-a5cb-4c46-badb-b0038a3fddb9",
+      "name": "Deploy on the server",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "={{ $json.command }}"
+      },
+      "notes": "SSH Private Key credential: host 192.168.3.201, port 22, user root, the n8n-deploy key. The key can only run /usr/local/bin/homelab-deploy."
+    },
+    {
+      "id": "95d04a66-5150-4adf-beb2-96dd38a65787",
+      "name": "Report to Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Report the deploy result from the server (SSH output) to Telegram.\nconst info = $('Check GitHub for changes').first().json;\nconst out = String($input.first().json.stdout || $input.first().json.stderr || '');\nconst failed = /ERROR|error:|failed/i.test(out);\nconst what = info.stacks.length ? info.stacks.join(', ') : 'repo files only';\nconst lines = [`${failed ? '\u26a0\ufe0f Deploy finished with problems' : '\ud83d\ude80 Deployed'}: ${what} (${info.head})`];\nfor (const m of info.messages) lines.push(`\u2022 ${m}`);\nif (failed) lines.push('', out.split('\\n').filter(l => /ERROR|error|fail|skip/i.test(l)).slice(-6).join('\\n') || out.slice(-600));\nawait say(lines.join('\\n'));\nreturn [{ json: { reported: true } }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Check GitHub for changes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check GitHub for changes": {
+      "main": [
+        [
+          {
+            "node": "Deploy on the server",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy on the server": {
+      "main": [
+        [
+          {
+            "node": "Report to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {}
+}

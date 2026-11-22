@@ -1,0 +1,118 @@
+{
+  "name": "Daily data report (Telegram)",
+  "nodes": [
+    {
+      "id": "a12bfc84-df3c-4fb1-9bce-66ad259202c5",
+      "name": "Every day at 9pm",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 21 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6b83e15e-6fab-424d-b608-061bde3690d6",
+      "name": "Ask Prometheus",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "url": "http://192.168.3.201:9090/api/v1/query",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "{__name__=~\"odu_day_used_bytes|odu_month_download_bytes|odu_month_upload_bytes\"}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3a744521-30f5-4179-8045-79b3b0dc6d97",
+      "name": "Format message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Turns Prometheus' answer into a friendly message\nconst result = $input.first().json.data.result;\nconst val = (name) => Number((result.find(r => r.metric.__name__ === name) || { value: [0, '0'] }).value[1]);\nconst gb = (bytes) => (bytes / 1e9).toFixed(2);\n\nconst today = val('odu_day_used_bytes');\nconst period = val('odu_month_download_bytes') + val('odu_month_upload_bytes');\nconst date = new Date().toLocaleDateString('en-GB', {\n  timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short',\n});\n\nreturn [{ json: { text:\n  `\ud83d\udcf6 Home internet: ${date}\\n\\n` +\n  `Today: ${gb(today)} GB\\n` +\n  `This billing period: ${gb(period)} GB\\n\\n` +\n  `Dashboard: https://grafana.tailc33d1b.ts.net`\n} }];"
+      }
+    },
+    {
+      "id": "4dff7272-fedd-4ff8-9734-271c7de5d77c",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every day at 9pm": {
+      "main": [
+        [
+          {
+            "node": "Ask Prometheus",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Prometheus": {
+      "main": [
+        [
+          {
+            "node": "Format message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format message": {
+      "main": [
+        [
+          {
+            "node": "Send to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos"
+  },
+  "pinData": {}
+}

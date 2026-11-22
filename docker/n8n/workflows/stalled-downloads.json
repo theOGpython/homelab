@@ -1,0 +1,57 @@
+{
+  "name": "Stalled download cleanup (hourly)",
+  "nodes": [
+    {
+      "id": "f6bf1ac9-1abf-403b-b588-df5202aec66d",
+      "name": "Every hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "3a4b334f-189b-47a9-ace6-083b8ba41b2f",
+      "name": "Clean up stalled downloads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Remove downloads stalled for 24h+; Radarr/Sonarr/Lidarr blocklist them and search for another copy.\nconst STALL_HOURS = 24, MAX_PER_RUN = 5;\nconst login = await helpers.httpRequest({ method: 'POST', url: `${LAN}:8080/api/v2/auth/login`,\n  headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: `${LAN}:8080` },\n  body: `username=${encodeURIComponent($env.HOMEPAGE_VAR_QBIT_USER || '')}&password=${encodeURIComponent($env.HOMEPAGE_VAR_QBIT_PASS || '')}`,\n  returnFullResponse: true, timeout: 15000 });\nconst cookie = [].concat(login.headers?.['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');\nif (!cookie) throw new Error('qBittorrent login failed');\nconst torrents = await get(`${LAN}:8080/api/v2/torrents/info`, { headers: { Cookie: cookie, Referer: `${LAN}:8080` } });\nconst now = Date.now() / 1000, limit = STALL_HOURS * 3600;\nconst stalled = torrents.filter(t => ['stalledDL', 'metaDL'].includes(t.state) && t.progress < 1 &&\n  now - (t.last_activity || t.added_on) > limit && now - t.added_on > limit).slice(0, MAX_PER_RUN);\nif (!stalled.length) return [];\n\nconst ARRS = [\n  { name: 'Radarr', url: `${LAN}:7878/api/v3`, key: $env.HOMEPAGE_VAR_RADARR_KEY },\n  { name: 'Sonarr', url: `${LAN}:8989/api/v3`, key: $env.HOMEPAGE_VAR_SONARR_KEY },\n  { name: 'Lidarr', url: `${LAN}:8686/api/v1`, key: $env.HOMEPAGE_VAR_LIDARR_KEY },\n];\nconst queues = [];\nfor (const a of ARRS) {\n  const q = await safe(() => get(`${a.url}/queue`, { headers: { 'X-Api-Key': a.key || '' }, qs: { pageSize: 500 } }));\n  for (const r of (q?.records || [])) if (r.downloadId) queues.push({ arr: a, id: r.id, hash: r.downloadId.toLowerCase(), title: r.title });\n}\ns.notified = (s.notified || []).filter(h => torrents.some(t => t.hash === h));\nconst removed = [], unmanaged = [];\nfor (const t of stalled) {\n  const days = Math.floor((now - t.added_on) / 86400);\n  const item = queues.find(q => q.hash === t.hash.toLowerCase());\n  if (item) {\n    const ok = await safe(() => helpers.httpRequest({ method: 'DELETE', url: `${item.arr.url}/queue/${item.id}`,\n      headers: { 'X-Api-Key': item.arr.key || '' }, qs: { removeFromClient: true, blocklist: true, skipRedownload: false }, timeout: 30000 }).then(() => true));\n    if (ok) removed.push(`\u2022 ${t.name.slice(0, 55)} (${Math.round(t.progress * 100)}%, ${days} d) \u2192 ${item.arr.name} is searching for another copy`);\n  } else if (!s.notified.includes(t.hash)) {\n    unmanaged.push(`\u2022 ${t.name.slice(0, 55)} (${Math.round(t.progress * 100)}%, ${days} d)`);\n    s.notified.push(t.hash);\n  }\n}\nconst parts = [];\nif (removed.length) parts.push(`\ud83e\uddf9 Removed ${removed.length} stalled download${removed.length > 1 ? 's' : ''}:\\n${removed.join('\\n')}`);\nif (unmanaged.length) parts.push(`\u23f8\ufe0f Stalled for over ${STALL_HOURS} h but not from Radarr/Sonarr/Lidarr, so left alone (remove in qBittorrent if unwanted):\\n${unmanaged.join('\\n')}`);\nif (parts.length) await say(parts.join('\\n\\n'));\nreturn parts.length ? [{ json: { removed: removed.length, unmanaged: unmanaged.length } }] : [];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every hour": {
+      "main": [
+        [
+          {
+            "node": "Clean up stalled downloads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {}
+}

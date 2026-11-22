@@ -1,0 +1,96 @@
+{
+  "name": "Morning briefing (7am)",
+  "nodes": [
+    {
+      "id": "5051c93a-eba7-4c84-8db6-9989f4177f0a",
+      "name": "Every day at 7am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "b74cd0d5-5ac9-40c7-ade2-59a55ce028bd",
+      "name": "Today's events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "list",
+          "cachedResultName": "primary"
+        },
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ $today.toISO() }}",
+          "timeMax": "={{ $today.plus({ days: 1 }).toISO() }}",
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "notes": "Select your Google Calendar credential. If this node errors, the briefing still goes out (without events)."
+    },
+    {
+      "id": "40d29a48-186f-48df-b59c-c8925b4a3a52",
+      "name": "Build & send briefing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Morning briefing. Input items come from the \"Today's events\" Google Calendar node (may be empty).\nconst SITE = { lat: 6.50, lon: 3.35 };\nconst WMO = { 0: 'clear \u2600\ufe0f', 1: 'mostly clear \ud83c\udf24', 2: 'partly cloudy \u26c5', 3: 'cloudy \u2601\ufe0f', 45: 'foggy \ud83c\udf2b', 48: 'foggy \ud83c\udf2b', 51: 'light drizzle \ud83c\udf26', 53: 'drizzle \ud83c\udf26', 55: 'drizzle \ud83c\udf26',\n  61: 'light rain \ud83c\udf27', 63: 'rain \ud83c\udf27', 65: 'heavy rain \ud83c\udf27', 80: 'showers \ud83c\udf26', 81: 'showers \ud83c\udf27', 82: 'heavy showers \u26c8', 95: 'thunderstorms \u26c8', 96: 'thunderstorms \u26c8', 99: 'thunderstorms \u26c8' };\nconst t = lagosNow(), today = ymd(t);\nconst events = $input.all().map(i => i.json).filter(e => e && (e.summary || e.start));\n\nconst [wx, power, internet, tv, pool] = await Promise.all([\n  safe(() => get('https://api.open-meteo.com/v1/forecast', { qs: { latitude: SITE.lat, longitude: SITE.lon, timezone: 'Africa/Lagos', forecast_days: 1,\n    daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max' } })),\n  safe(() => Promise.all([prom('felicity_battery_soc_percent'), prom('felicity_grid_present'), prom('solar_forecast_today_kwh'),\n    prom('avg_over_time(felicity_grid_present[12h]) * 12'), prom('resets(felicity_grid_present[12h])')])),\n  safe(() => prom('odu_month_download_bytes + odu_month_upload_bytes')),\n  safe(() => get(`${LAN}:8989/api/v3/calendar`, { headers: { 'X-Api-Key': $env.HOMEPAGE_VAR_SONARR_KEY || '' },\n    qs: { start: `${today}T00:00:00+01:00`, end: `${today}T23:59:59+01:00`, includeSeries: true } })),\n  safe(() => pveGet('/nodes/pve/storage/local-lvm/status')),\n]);\n\nconst L = [`\ud83c\udf05 Good morning! ${t.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}`];\nif (wx?.daily) {\n  const w = wx.daily;\n  L.push(`\ud83c\udf21 ${Math.round(w.temperature_2m_min[0])}\u2013${Math.round(w.temperature_2m_max[0])}\u00b0C, ${WMO[w.weather_code[0]] || 'mixed'}` +\n    (w.precipitation_probability_max[0] >= 30 ? `, ${w.precipitation_probability_max[0]}% chance of rain` : ''));\n}\nif (power) {\n  const [soc, grid, fc, gridH, cuts] = power;\n  if (fc !== null) L.push(`\u2600\ufe0f Solar forecast: ${fc.toFixed(1)} kWh` + (fc < 4 ? ' (a dull day: go easy on power)' : fc > 8 ? ' (a bright day)' : ''));\n  if (soc !== null) L.push(`\ud83d\udd0b Battery ${Math.round(soc)}% \u00b7 ${grid >= 1 ? '\u26a1 grid ON' : '\u26a0\ufe0f grid OFF'}`);\n  if (gridH !== null) L.push(`\ud83c\udf19 Last 12 h: grid for ${hm(gridH)}` + (cuts ? ` (${cuts} power cut${cuts === 1 ? '' : 's'})` : ''));\n}\nif (internet !== null) L.push(`\ud83d\udcf6 Data used this billing period: ${(internet / 1e9).toFixed(0)} GB`);\n\nL.push('');\nif (events.length) {\n  L.push('\ud83d\udcc5 Today:');\n  for (const e of events.slice(0, 8)) {\n    const st = e.start?.dateTime ? new Date(e.start.dateTime).toLocaleTimeString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' }) : 'All day';\n    L.push(`   ${st}  ${e.summary || '(no title)'}`);\n  }\n} else L.push('\ud83d\udcc5 Nothing on the calendar today.');\n\nif (tv?.length) L.push(`\ud83d\udcfa New tonight: ${[...new Set(tv.map(x => `${x.series?.title} S${pad(x.seasonNumber)}E${pad(x.episodeNumber)}`))].slice(0, 4).join(', ')}`);\nif (pool) { const pct = Math.round(pool.used / pool.total * 100); if (pct >= 80) L.push(`\ud83d\udcbe Storage pool at ${pct}% \u26a0\ufe0f consider deleting watched media (/delete).`); }\n\nawait say(L.join('\\n'));\nreturn [{ json: { sent: true } }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every day at 7am": {
+      "main": [
+        [
+          {
+            "node": "Today's events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Today's events": {
+      "main": [
+        [
+          {
+            "node": "Build & send briefing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos"
+  },
+  "pinData": {}
+}

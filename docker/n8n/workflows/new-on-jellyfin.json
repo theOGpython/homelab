@@ -1,0 +1,81 @@
+{
+  "name": "New on Jellyfin (Telegram)",
+  "nodes": [
+    {
+      "id": "2a5ae118-3b82-49de-b7ef-36ed113af3e7",
+      "name": "Sonarr/Radarr webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "3c43cc59-637d-45ff-b593-9721ac358dfa",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "arr-imported",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "5e0a3f96-2506-4be6-be6a-3ff7908c54bd",
+      "name": "Build message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Builds a message from a Sonarr/Radarr webhook. Ignores upgrades and other events.\nconst b = $input.first().json.body || {};\nconst link = '\\n\\n\u25b6\ufe0f https://jellyfin.tailc33d1b.ts.net';\n\nif (b.eventType === 'Test') {\n  return [{ json: { text: `\u2705 Test from ${b.instanceName || 'Sonarr/Radarr'} reached n8n` } }];\n}\nif (b.eventType !== 'Download' || b.isUpgrade) return [];\n\nif (b.movie) {\n  return [{ json: { text: `\ud83c\udfac New movie on Jellyfin: ${b.movie.title} (${b.movie.year})` + link } }];\n}\nif (b.series) {\n  const pad = (n) => String(n).padStart(2, '0');\n  const eps = (b.episodes || [])\n    .map(e => `S${pad(e.seasonNumber)}E${pad(e.episodeNumber)}${e.title ? ' \u2013 ' + e.title : ''}`)\n    .join('\\n');\n  const plural = (b.episodes || []).length > 1 ? 's' : '';\n  return [{ json: { text: `\ud83d\udcfa New episode${plural} of ${b.series.title}:\\n${eps}` + link } }];\n}\nreturn [];"
+      }
+    },
+    {
+      "id": "209cfc2d-065e-472d-b33c-ea31aec79d45",
+      "name": "Send to me",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Sonarr/Radarr webhook": {
+      "main": [
+        [
+          {
+            "node": "Build message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build message": {
+      "main": [
+        [
+          {
+            "node": "Send to me",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos"
+  },
+  "pinData": {}
+}

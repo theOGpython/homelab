@@ -1,0 +1,179 @@
+{
+  "name": "Spending tracker (Outlook alerts \u2192 Google Sheets)",
+  "nodes": [
+    {
+      "id": "f50ca982-773d-46d7-ac95-9301a7b1a012",
+      "name": "New Outlook email",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 10,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "event": "messageReceived",
+        "output": "raw"
+      },
+      "notes": "Select your Microsoft Outlook credential."
+    },
+    {
+      "id": "8a324d6a-5add-4acc-b949-6f28c11ce2bb",
+      "name": "Parse bank & token alerts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Parse bank / token / data-purchase alert emails from Outlook into spending rows (for Google Sheets).\n// Tune SENDERS and CATEGORIES to your banks; send a few redacted example alerts to improve the parsing.\nconst SENDERS = /kuda|gtbank|gtco|access|zenith|uba|firstbank|first bank|opay|moniepoint|palmpay|wema|alat|sterling|fcmb|stanbic|fidelity|union|ecobank|polaris|providus|ekedc|ekoelectric|eko electricity|ikedc|airtel|mtn|glo|9mobile|paystack|flutterwave|chowdeck|bolt|uber/i;\nconst SUBJECT = /debit|credit|transaction|alert|receipt|token|payment|purchase|transfer|recharge|subscription/i;\nconst CATEGORIES = [\n  ['Power', /ekedc|eko electric|ikedc|prepaid|token|electricity|disco/i],\n  ['Data & airtime', /airtel|mtn|glo|9mobile|data|airtime|recharge/i],\n  ['Food', /chowdeck|glovo|jumia food|restaurant|kfc|chicken republic|dominos|food|eatery|cafe/i],\n  ['Transport', /uber|bolt|indrive|rida|fuel|petrol|filling station|toll/i],\n  ['Subscriptions', /netflix|spotify|apple|google|youtube|showmax|dstv|gotv|icloud|anthropic|openai|github|microsoft/i],\n  ['Cash', /atm|withdrawal|pos /i],\n  ['Transfers', /transfer|trf|nip|sent to|received from/i],\n];\nconst num = (v) => Number(String(v).replace(/,/g, ''));\nconst MONEY = String.raw`(?:NGN|N|\u20a6)\\s?([\\d,]+(?:\\.\\d{1,2})?)`;\nconst rows = [];\nfor (const item of $input.all()) {\n  const m = item.json;\n  const from = `${m.from?.emailAddress?.name || ''} ${m.from?.emailAddress?.address || m.sender?.emailAddress?.address || ''}`;\n  const subject = m.subject || '';\n  const body = String(m.bodyPreview || m.body?.content || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/[ \\t]+/g, ' ');\n  if (!SENDERS.test(from + ' ' + subject) || !SUBJECT.test(subject + ' ' + body.slice(0, 300))) continue;\n  const text = `${subject}\\n${body}`;\n  const labelled = text.match(new RegExp(String.raw`(?:amount|amt|debited|credited|value|total|paid)[^\\d\u20a6N]{0,20}` + MONEY, 'i'));\n  const anyMoney = text.match(new RegExp(MONEY, 'i'));\n  const amount = labelled ? num(labelled[1]) : anyMoney ? num(anyMoney[1]) : null;\n  if (!amount) continue;\n  const CREDIT = /\\bcredit(ed)?\\b|\\bcr\\b|received|deposit|inflow/i, DEBIT = /\\bdebit(ed)?\\b|\\bdr\\b|purchase|paid|payment|token|recharge|withdrawal|sent/i;\n  const type = DEBIT.test(subject) ? 'debit' : CREDIT.test(subject) ? 'credit' : CREDIT.test(body.slice(0, 200)) ? 'credit' : DEBIT.test(text) ? 'debit' : 'unknown';\n  const desc = (text.match(/(?:description|desc|narration|details|remarks|merchant)\\s*[:\\-]\\s*([^\\n]{3,80})/i)?.[1] || subject).trim().slice(0, 80);\n  const balance = text.match(new RegExp(String.raw`(?:avail(?:able)?\\s*bal(?:ance)?|bal(?:ance)?)\\s*[:\\-]?\\s*` + MONEY, 'i'));\n  const category = type === 'credit' ? 'Income' : (CATEGORIES.find(([, re]) => re.test(`${desc} ${subject} ${from}`)) || ['Other'])[0];\n  const when = new Date(m.receivedDateTime || Date.now());\n  rows.push({ json: {\n    Date: when.toLocaleString('en-GB', { timeZone: 'Africa/Lagos' }), Month: when.toISOString().slice(0, 7),\n    Type: type, Amount: amount, Category: category, Description: desc, Balance: balance ? num(balance[1]) : '',\n    Source: (m.from?.emailAddress?.name || m.from?.emailAddress?.address || '').slice(0, 40), EmailId: m.id || '',\n  } });\n}\nreturn rows;\n"
+      }
+    },
+    {
+      "id": "244f6281-c9cd-42ba-b0cf-3ebef96e8512",
+      "name": "Add to spreadsheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Transactions",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "notes": "Paste your spreadsheet URL. The sheet tab must be called Transactions, with headers: Date, Month, Type, Amount, Category, Description, Balance, Source, EmailId"
+    },
+    {
+      "id": "da8f1685-fe7c-4d62-be82-e6e447b2e075",
+      "name": "1st of the month, 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        240
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 1 * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bbd06943-1138-48df-af36-b9debfb086ad",
+      "name": "Read transactions",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        240,
+        240
+      ],
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Transactions",
+          "mode": "name"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2e583e19-afcd-4eb4-9406-0ff6e508413f",
+      "name": "Monthly summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        240
+      ],
+      "parameters": {
+        "jsCode": "const TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst LAN = 'http://192.168.3.201', PVE = 'https://192.168.3.200:8006';\nconst helpers = this.helpers;\nconst s = $getWorkflowStaticData('global');\nconst say = (text) => helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text, disable_web_page_preview: true }, json: true, timeout: 15000 });\nconst get = (url, opts = {}) => helpers.httpRequest({ url, json: true, timeout: 20000, ...opts });\nconst safe = async (fn) => { try { return await fn(); } catch (e) { return null; } };\nconst lagosNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));\nconst pad = (n) => String(n).padStart(2, '0');\nconst ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;\nconst hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m % 60} min`; };\nconst prom = async (expr) => { const r = await get(`${LAN}:9090/api/v1/query`, { qs: { query: expr } }); const v = r?.data?.result?.[0]?.value?.[1]; return v === undefined ? null : Number(v); };\nconst pveGet = (path) => get(`${PVE}/api2/json${path}`, { headers: { Authorization: `PVEAPIToken=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_ID}=${$env.HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}` }, skipSslCertificateValidation: true }).then(r => r.data);\nconst ghHeaders = (extra = {}) => ({ Authorization: `Bearer ${$env.HOMELAB_GITHUB_TOKEN || ''}`, Accept: 'application/vnd.github+json', 'User-Agent': 'homelab-n8n', ...extra });\nconst gh = (path, opts = {}) => { const { headers, ...rest } = opts; return helpers.httpRequest({ url: `https://api.github.com${path}`, json: true, timeout: 20000, headers: ghHeaders(headers), ...rest }); };\nconst REPO = $env.HOMELAB_GITHUB_REPO || 'theOGpython/homelab';\n\n// Monthly spending summary from the Google Sheet rows (runs on the 1st for last month).\nconst now = lagosNow();\nconst prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);\nconst month = `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}`;\nconst rows = $input.all().map(i => i.json).filter(r => r.Month === month);\nconst naira = (n) => '\u20a6' + Math.round(n).toLocaleString('en-NG');\nif (!rows.length) { await say(`\ud83d\udcb3 No transactions recorded for ${month}.`); return [{ json: { sent: true } }]; }\nconst debits = rows.filter(r => r.Type === 'debit'), credits = rows.filter(r => r.Type === 'credit');\nconst sum = (a) => a.reduce((t, r) => t + Number(r.Amount || 0), 0);\nconst byCat = {};\nfor (const r of debits) byCat[r.Category || 'Other'] = (byCat[r.Category || 'Other'] || 0) + Number(r.Amount || 0);\nconst top = Object.entries(byCat).sort((a, b) => b[1] - a[1]);\nconst biggest = [...debits].sort((a, b) => b.Amount - a.Amount).slice(0, 3);\nconst label = prev.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });\nconst L = [`\ud83d\udcb3 Spending in ${label}`, `   Out: ${naira(sum(debits))} (${debits.length} transactions)`, `   In: ${naira(sum(credits))}`, '', '\ud83d\udcca By category:'];\nfor (const [c, v] of top) L.push(`   ${c}: ${naira(v)} (${Math.round(v / sum(debits) * 100)}%)`);\nL.push('', '\ud83d\udd1d Biggest:'); for (const r of biggest) L.push(`   ${naira(r.Amount)}: ${r.Description}`);\nawait say(L.join('\\n'));\nreturn [{ json: { sent: true } }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "New Outlook email": {
+      "main": [
+        [
+          {
+            "node": "Parse bank & token alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse bank & token alerts": {
+      "main": [
+        [
+          {
+            "node": "Add to spreadsheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1st of the month, 9am": {
+      "main": [
+        [
+          {
+            "node": "Read transactions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read transactions": {
+      "main": [
+        [
+          {
+            "node": "Monthly summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos"
+  },
+  "pinData": {}
+}
