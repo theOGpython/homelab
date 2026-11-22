@@ -67,6 +67,14 @@
   .scribble path { fill: none; stroke: var(--crayon); stroke-width: 7; stroke-linecap: round; }
   .intro { max-width: 34em; margin: 0 0 1.5rem; font-size: 1.25rem; }
   .home-actions { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2.25rem; }
+  .tabs { display: flex; flex-wrap: wrap; gap: .75rem; margin: 0 0 1.75rem; }
+  .tab {
+    font: inherit; font-weight: 800; font-size: 1.35rem; color: var(--ink); cursor: pointer;
+    border: 3px solid var(--ink); background: var(--paper); border-radius: 999px;
+    padding: .5rem 1.4rem .4rem; box-shadow: 3px 3px 0 var(--ink);
+  }
+  .tab[aria-selected="true"] { background: var(--crayon); color: #fff; }
+  .tab:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
   .level { margin: 0 0 2.25rem; }
   .level h3 { font-size: 1.75rem; font-weight: 800; margin: 0 0 .75rem; display: flex; align-items: center; gap: .5rem; }
   .stars { color: var(--crayon); font-size: 1.4rem; letter-spacing: .1em; }
@@ -172,18 +180,19 @@
 <main id="home" class="wrap">
   <h1 class="title">Drawing Club</h1>
   <svg class="scribble" viewBox="0 0 420 26" aria-hidden="true"><path d="M6 16 C 60 4, 110 24, 170 12 S 280 6, 330 16 S 400 18, 414 9"/></svg>
-  <p class="intro">Every animal starts with simple shapes. Pick one, follow the steps, then draw it yourself.</p>
+  <p class="intro">Every drawing starts with simple shapes. Pick an animal or an everyday thing, follow the steps, then draw it yourself.</p>
   <div class="home-actions">
     <button class="big draw-it" data-go="#/draw/free">Free drawing</button>
     <button class="big" data-go="#/gallery">My drawings</button>
   </div>
+  <div class="tabs" id="topic-tabs" role="tablist" aria-label="Lesson topics"></div>
   <div id="levels"></div>
 </main>
 
 <!-- LESSON -->
 <main id="lesson" class="wrap hidden">
   <div class="bar">
-    <button class="chip" data-go="#/">All animals</button>
+    <button class="chip" data-go="#/" id="lesson-back">All animals</button>
     <h2 id="lesson-name"></h2>
   </div>
   <div class="lesson">
@@ -227,11 +236,11 @@
 <!-- GALLERY -->
 <main id="gallery" class="wrap hidden">
   <div class="bar">
-    <button class="chip" data-go="#/">All animals</button>
+    <button class="chip" data-go="#/">All lessons</button>
     <h2>My drawings</h2>
   </div>
   <div class="gallery" id="gallery-grid"></div>
-  <p class="empty hidden" id="gallery-empty">No drawings yet. Pick an animal, draw it, and press "Save" to keep it here.</p>
+  <p class="empty hidden" id="gallery-empty">No drawings yet. Pick a lesson, draw it, and press "Save" to keep it here.</p>
 </main>
 
 <dialog id="viewer"><img id="viewer-img" alt=""></dialog>
@@ -384,7 +393,138 @@ const ANIMALS = [
     ] },
 ];
 
-const BY_ID = Object.fromEntries(ANIMALS.map(a => [a.id, a]));
+/* Everyday things: same simple-shapes approach as the animals. */
+const drop = (x, y) => `M${x} ${y} Q${x + 9} ${y + 14} ${x} ${y + 18} Q${x - 9} ${y + 14} ${x} ${y} Z`;
+const OBJECTS = [
+  { id: 'sun', name: 'Sun', level: 'easy',
+    idea: 'What are you doing on your sunny day? Add clouds, a kite or friends playing.',
+    steps: [
+      ['Draw a big circle in the middle.', C(150, 150, 55)],
+      ['Add two happy eyes.', S(D(132, 140, 6), D(168, 140, 6))],
+      ['Draw a big smile and rosy cheeks.', S(P('M126 162 Q150 186 174 162'), C(116, 164, 7), C(184, 164, 7))],
+      ['Draw four straight rays: up, down, left and right.', S(L(150, 82, 150, 50), L(150, 218, 150, 250), L(82, 150, 50, 150), L(218, 150, 250, 150))],
+      ['Add four more rays in between.', S(L(102, 102, 80, 80), L(198, 102, 220, 80), L(102, 198, 80, 220), L(198, 198, 220, 220))],
+    ] },
+  { id: 'balloon', name: 'Balloon', level: 'easy',
+    idea: 'Who is holding your balloon? Draw a whole bunch in different colours.',
+    steps: [
+      ['Draw a tall oval for the balloon.', E(150, 110, 58, 70)],
+      ['Add a tiny triangle knot at the bottom.', P('M141 192 L159 192 L150 180 Z')],
+      ['Draw a long wiggly string.', P('M150 192 Q132 214 150 234 Q168 254 150 276')],
+      ['Add a little curved line to make it shiny.', P('M116 84 Q122 66 140 60')],
+    ] },
+  { id: 'apple', name: 'Apple', level: 'easy',
+    idea: 'Is your apple red, green or yellow? Draw a bowl full of fruit.',
+    steps: [
+      ['Draw a round apple shape with a dip at the top.', P('M150 98 C 120 78, 70 92, 72 150 C 74 210, 112 250, 150 236 C 188 250, 226 210, 228 150 C 230 92, 180 78, 150 98 Z')],
+      ['Add a little stalk on top.', P('M150 98 Q148 80 156 62')],
+      ['Draw a leaf next to the stalk.', P('M156 74 Q182 54 206 66 Q182 90 156 74 Z')],
+      ['Add a curved line to make it shiny.', P('M98 136 Q100 116 114 106')],
+    ] },
+  { id: 'mug', name: 'Mug', level: 'easy',
+    idea: 'What is in your mug: hot chocolate, tea or milk? Draw a biscuit next to it.',
+    steps: [
+      ['Draw the sides and bottom of the mug.', P('M96 112 L104 236 Q106 248 118 248 L182 248 Q194 248 196 236 L204 112')],
+      ['Add an oval for the top.', E(150, 112, 54, 14)],
+      ['Draw a handle on one side.', P('M201 140 Q246 142 244 176 Q242 208 198 208')],
+      ['Decorate it with a heart.', P('M150 200 C 128 182, 132 162, 150 174 C 168 162, 172 182, 150 200 Z')],
+      ['Draw curly steam rising up.', S(P('M132 92 Q122 76 134 62 Q146 48 136 32'), P('M168 92 Q158 76 170 62 Q182 48 172 32'))],
+      ['Sit your mug on a saucer.', E(150, 254, 84, 12, 'scene')],
+    ] },
+  { id: 'ice-cream', name: 'Ice cream', level: 'easy',
+    idea: 'Which flavour is yours? Draw a second ice cream for a friend.',
+    steps: [
+      ['Draw an upside-down triangle for the cone.', P('M104 150 L196 150 L150 270 Z')],
+      ['Add criss-cross lines on the cone.', S(L(116, 180, 184, 180), L(127, 210, 173, 210), L(130, 150, 165, 232), L(170, 150, 135, 232))],
+      ['Draw a scoop of ice cream with a drippy bottom.', P('M100 150 Q96 96 150 88 Q204 96 200 150 Q186 162 172 150 Q158 162 144 150 Q130 162 116 150 Q108 158 100 150 Z')],
+      ['Add a second scoop on top.', P('M122 90 A 30 30 0 1 1 178 90')],
+      ['Put a cherry on top.', S(C(150, 40, 9), P('M150 31 Q154 20 166 16'))],
+      ['Add some sprinkles.', S(L(126, 120, 132, 114), L(160, 112, 168, 116), L(178, 132, 184, 126), L(140, 136, 147, 139), L(150, 64, 156, 70))],
+    ] },
+  { id: 'house', name: 'House', level: 'mid',
+    idea: 'Who lives in your house? Draw a garden, a path to the door or a pet in the window.',
+    steps: [
+      ['Draw a big square for the walls.', P('M80 140 L80 260 L220 260 L220 140 Z')],
+      ['Add a triangle roof on top.', P('M64 144 L150 66 L236 144 Z')],
+      ['Draw a door with a round top and a knob.', S(P('M134 260 L134 206 Q150 190 166 206 L166 260'), D(158, 234, 4))],
+      ['Add two windows with crosses.', S(P('M96 166 L126 166 L126 196 L96 196 Z'), L(111, 166, 111, 196), L(96, 181, 126, 181), P('M174 166 L204 166 L204 196 L174 196 Z'), L(189, 166, 189, 196), L(174, 181, 204, 181))],
+      ['Draw a chimney with puffs of smoke.', S(P('M186 99 L186 70 L206 70 L206 117'), P('M196 62 Q186 48 198 38 Q210 28 200 14'))],
+      ['Draw the ground and some grass.', S(L(30, 260, 270, 260, 'scene'), P('M44 260 L48 248 L52 260 M240 260 L244 248 L248 260', 'scene'))],
+    ] },
+  { id: 'tree', name: 'Tree', level: 'mid',
+    idea: 'What lives in your tree? Add a bird\'s nest, a squirrel or a swing.',
+    steps: [
+      ['Draw two lines for the trunk.', P('M132 270 Q140 220 138 172 M168 270 Q160 220 162 172')],
+      ['Add two branches.', P('M140 184 Q120 168 108 152 M160 188 Q180 172 194 160')],
+      ['Draw a big bumpy cloud of leaves.', P('M100 168 Q66 160 70 126 Q60 92 96 84 Q102 46 144 50 Q170 30 196 56 Q236 58 232 96 Q252 128 222 150 Q214 178 182 170 Q160 186 140 172 Q118 184 100 168 Z')],
+      ['Add some round apples.', S(C(118, 112, 9), C(176, 94, 9), C(202, 128, 9), C(146, 138, 9))],
+      ['Draw a little hole in the trunk.', E(150, 222, 8, 12)],
+      ['Draw the ground and some grass.', S(L(40, 270, 260, 270, 'scene'), P('M70 270 L74 258 L78 270 M222 270 L226 258 L230 270', 'scene'))],
+    ] },
+  { id: 'umbrella', name: 'Umbrella', level: 'mid',
+    idea: 'Splash! Draw yourself jumping in puddles under your umbrella.',
+    steps: [
+      ['Draw a big dome with a bumpy bottom edge.', P('M50 150 Q60 70 150 64 Q240 70 250 150 Q225 132 200 150 Q175 132 150 150 Q125 132 100 150 Q75 132 50 150 Z')],
+      ['Add three curved lines from the top.', S(P('M150 64 Q118 100 100 150'), L(150, 64, 150, 150), P('M150 64 Q182 100 200 150'))],
+      ['Draw a little tip on top.', L(150, 64, 150, 46)],
+      ['Draw a long handle with a hook at the end.', P('M150 150 L150 250 Q150 270 132 270 Q116 270 116 254')],
+      ['Add raindrops all around.', S(P(drop(70, 30)), P(drop(112, 16)), P(drop(196, 20)), P(drop(240, 36)), P(drop(42, 190)), P(drop(258, 200)))],
+      ['Draw a puddle at the bottom.', E(150, 280, 90, 10, 'scene')],
+    ] },
+  { id: 'sailboat', name: 'Sailboat', level: 'mid',
+    idea: 'Where is your boat sailing? Add fish under the water and birds in the sky.',
+    steps: [
+      ['Draw the bottom of the boat.', P('M60 200 L240 200 L212 240 L88 240 Z')],
+      ['Add a tall mast in the middle.', L(150, 200, 150, 50)],
+      ['Draw a big triangle sail on one side of the mast.', P('M150 62 L236 186 L150 186')],
+      ['Draw a smaller sail on the other side.', P('M150 86 L84 186 L150 186')],
+      ['Add a little flag at the top.', P('M150 50 L176 58 L150 66')],
+      ['Draw round windows on the boat.', S(C(110, 220, 7), C(150, 220, 7), C(190, 220, 7))],
+      ['Draw wavy water.', P('M20 252 Q45 238 70 252 Q95 266 120 252 Q145 238 170 252 Q195 266 220 252 Q245 238 270 252', 'scene')],
+    ] },
+  { id: 'car', name: 'Car', level: 'hard',
+    idea: 'Where is your car going? Draw a road with traffic lights, or the beach.',
+    steps: [
+      ['Draw a long box shape for the bottom of the car.', P('M50 200 L50 170 Q52 156 66 154 L234 154 Q250 156 252 170 L252 200 Z')],
+      ['Add the roof on top.', P('M86 154 L112 108 Q116 102 124 102 L184 102 Q192 102 196 108 L222 154')],
+      ['Draw two windows.', S(P('M102 150 L121 114 L146 114 L146 150 Z'), P('M158 150 L158 114 L186 114 L206 150 Z'))],
+      ['Add two big wheels.', S(C(96, 204, 24), C(206, 204, 24))],
+      ['Draw a smaller circle inside each wheel.', S(C(96, 204, 9), C(206, 204, 9))],
+      ['Add a door, a handle and lights.', S(L(152, 154, 152, 196), L(160, 166, 172, 166), E(244, 174, 5, 8), E(58, 174, 4, 8))],
+      ['Draw the road.', L(20, 228, 280, 228, 'scene')],
+    ] },
+  { id: 'bicycle', name: 'Bicycle', level: 'hard',
+    idea: 'Who is riding your bike? Add a basket, a bell or streamers on the handles.',
+    steps: [
+      ['Draw two big wheels, side by side.', S(C(86, 200, 46), C(214, 200, 46))],
+      ['Add a dot in the middle of each wheel.', S(D(86, 200, 6), D(214, 200, 6))],
+      ['Draw a triangle frame joined to the back wheel.', P('M86 200 L140 200 L124 136 Z')],
+      ['Join the frame to the front wheel.', P('M124 136 L196 136 L140 200 M196 136 L214 200')],
+      ['Add a seat and handlebars.', S(P('M106 126 Q124 118 144 126'), L(124, 136, 125, 124), P('M196 136 L190 110 M176 108 L206 108 Q216 108 214 118'))],
+      ['Draw the pedals.', S(C(140, 200, 10), L(140, 200, 152, 222), L(145, 222, 160, 222))],
+      ['Draw the ground.', L(20, 246, 280, 246, 'scene')],
+    ] },
+  { id: 'teapot', name: 'Teapot', level: 'hard',
+    idea: 'Who is coming to your tea party? Draw cups and cakes for everyone.',
+    steps: [
+      ['Draw a big round body.', E(150, 180, 72, 58)],
+      ['Add a curved lid with a little knob.', S(P('M110 128 Q150 100 190 128'), C(150, 104, 9))],
+      ['Draw a curved spout on one side.', P('M80 160 Q54 156 44 120 Q42 110 51 111 Q58 112 60 124 Q66 150 82 188')],
+      ['Add a handle on the other side.', P('M212 150 Q262 152 258 186 Q254 216 208 214')],
+      ['Draw a flat base.', P('M114 230 L108 248 L192 248 L186 230')],
+      ['Decorate it with a band and dots.', S(P('M84 160 Q150 176 216 160'), C(126, 196, 7), C(150, 204, 7), C(174, 196, 7))],
+      ['Add steam coming out of the spout.', P('M47 100 Q38 86 48 74 Q58 62 50 48')],
+    ] },
+];
+ANIMALS.forEach(a => { a.topic = 'animals'; });
+OBJECTS.forEach(o => { o.topic = 'things'; });
+const LESSONS = [...ANIMALS, ...OBJECTS];
+const TOPICS = [
+  { id: 'animals', name: 'Animals', hash: '#/', back: 'All animals' },
+  { id: 'things', name: 'Everyday things', hash: '#/things', back: 'All everyday things' },
+];
+
+const BY_ID = Object.fromEntries(LESSONS.map(a => [a.id, a]));
 const withArticle = name => (/^[aeiou]/i.test(name) ? 'an ' : 'a ') + name.toLowerCase();
 const nameOf = id => (BY_ID[id] ? BY_ID[id].name : 'Free drawing');
 
@@ -417,18 +557,24 @@ function toast(msg) {
 }
 
 /* ---------------- home ---------------- */
-function renderHome() {
-  $('levels').innerHTML = LEVELS.map(level => `
+function renderHome(topic = 'animals') {
+  $('topic-tabs').innerHTML = TOPICS.map(t => `
+    <button class="tab" role="tab" aria-selected="${t.id === topic}" data-go="${t.hash}">${t.name}</button>`).join('');
+  $('levels').innerHTML = LEVELS.map(level => {
+    const items = LESSONS.filter(a => a.topic === topic && a.level === level.id);
+    if (!items.length) return '';
+    return `
     <section class="level">
       <h3>${level.name} <span class="stars" aria-label="${level.stars} of 3 stars">${'★'.repeat(level.stars)}</span></h3>
       <div class="grid">
-        ${ANIMALS.filter(a => a.level === level.id).map(a => `
+        ${items.map(a => `
           <button class="tile" data-go="#/learn/${a.id}">
             <svg class="art" viewBox="0 0 300 300" aria-hidden="true">${artMarkup(a)}</svg>
             <span>${a.name}</span>
           </button>`).join('')}
       </div>
-    </section>`).join('');
+    </section>`;
+  }).join('');
   show('home');
 }
 
@@ -438,6 +584,9 @@ function renderLesson() {
   const { animal, step } = lesson;
   const total = animal.steps.length;
   $('lesson-name').textContent = `How to draw ${withArticle(animal.name)}`;
+  const topic = TOPICS.find(t => t.id === animal.topic) || TOPICS[0];
+  $('lesson-back').dataset.go = topic.hash;
+  $('lesson-back').textContent = topic.back;
   $('lesson-art').setAttribute('aria-label', `${animal.name}, step ${step + 1}`);
   $('lesson-art').innerHTML = artMarkup(animal, step, true);
   $('step-count').textContent = `Step ${step + 1} of ${total}`;
@@ -623,7 +772,8 @@ function route() {
   if (view === 'learn' && BY_ID[id]) { lesson = { animal: BY_ID[id], step: 0 }; renderLesson(); show('lesson'); }
   else if (view === 'draw') renderDraw(id);
   else if (view === 'gallery') renderGallery();
-  else renderHome();
+  else if (view === 'things') renderHome('things');
+  else renderHome('animals');
 }
 window.addEventListener('hashchange', route);
 route();
