@@ -1,0 +1,30 @@
+#!/bin/bash
+# =============================================================================
+# Run ONLY by n8n's restricted SSH key (forced command in /root/.ssh/authorized_keys).
+# Pulls the homelab repo and redeploys the stacks named in the SSH command
+# (e.g. "homepage media-stack"), or just pulls ("pull"). Logs to /var/log/homelab-deploy.log
+# Install: cp scripts/homelab-deploy /usr/local/bin/ && chmod +x /usr/local/bin/homelab-deploy
+# =============================================================================
+set -u
+ARGS=$(printf '%s' "${SSH_ORIGINAL_COMMAND:-}" | tr -cs 'a-z0-9-' ' ')
+LOG=/var/log/homelab-deploy.log
+cd /opt/homelab || { echo "ERROR: /opt/homelab missing"; exit 1; }
+{
+  echo "=== $(date '+%F %T') deploy: ${ARGS:-pull}"
+  if ! git pull --ff-only 2>&1; then echo "ERROR: git pull failed"; exit 1; fi
+  later=""
+  for s in $ARGS; do
+    [ "$s" = "pull" ] && continue
+    d=/opt/homelab/docker/$s
+    [ -f "$d/.env" ] || { echo "skip $s (not deployed on this server)"; continue; }
+    [ "$s" = "n8n" ] && { later="n8n"; continue; }        # restart n8n last, in the background
+    echo "--- $s"
+    (cd "$d" && docker compose up -d --build --remove-orphans 2>&1 | tail -4) || echo "ERROR: $s failed"
+  done
+  docker image prune -f >/dev/null 2>&1
+  if [ -n "$later" ]; then
+    echo "--- n8n (restarting in the background)"
+    (cd /opt/homelab/docker/n8n && nohup docker compose up -d --build --remove-orphans >>"$LOG" 2>&1 &)
+  fi
+  echo "=== done"
+} 2>&1 | tee -a "$LOG" | tail -40
