@@ -1,0 +1,66 @@
+# =============================================================================
+# ReadMeABook (RMAB): request audiobooks from an Audible-backed catalog; it searches
+# Prowlarr, downloads with qBittorrent and imports into Audiobookshelf.
+# https://audiobooks.<tailnet>.ts.net · LAN :3050 (3030 is reserved for Linkwarden)
+#
+# Upstream: github.com/kikootwo/readmeabook (AGPL-3.0). One image with its own PostgreSQL + Redis.
+# Paths: qBittorrent and RMAB both see the data disk at /data, so downloads match
+# (/data/torrents/...) and the library is /data/media/audiobooks.
+#
+# Usage (inside the "docker" LXC):  bash setup-env.sh && docker compose up -d
+# =============================================================================
+
+name: readmeabook
+
+services:
+
+  ts-audiobooks:
+    image: tailscale/tailscale:stable
+    hostname: audiobooks
+    container_name: ts-audiobooks
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: audiobooks
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/audiobooks:/var/lib/tailscale
+      - ./tailscale/audiobooks.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 3050:3030                      # LAN access
+    restart: unless-stopped
+
+  readmeabook:
+    image: ghcr.io/kikootwo/readmeabook:${RMAB_TAG:-latest}
+    container_name: readmeabook
+    network_mode: "service:ts-audiobooks"
+    stop_grace_period: 90s             # lets its PostgreSQL shut down cleanly
+    environment:
+      PUID: 1000
+      PGID: 1000
+      UMASK: "002"
+      TZ: Africa/Lagos
+      PUBLIC_URL: https://audiobooks.${TS_TAILNET}
+    volumes:
+      - ${CONFIG_ROOT}/readmeabook/config:/app/config      # settings + generated secrets: keep safe
+      - ${CONFIG_ROOT}/readmeabook/cache:/app/cache
+      - ${CONFIG_ROOT}/readmeabook/pgdata:/var/lib/postgresql/data
+      - ${CONFIG_ROOT}/readmeabook/redis:/var/lib/redis
+      - ${DATA_ROOT}:/data             # downloads: /data/torrents · library: /data/media/audiobooks
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+    depends_on:
+      - ts-audiobooks
+    restart: unless-stopped
