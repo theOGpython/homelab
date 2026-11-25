@@ -1,0 +1,57 @@
+{
+  "name": "Audiobooks ready (ReadMeABook \u2192 Telegram)",
+  "nodes": [
+    {
+      "id": "f947907a-3d1f-4f6a-8d3e-7298dec24c3c",
+      "name": "Every 10 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "7c1c647a-49fd-45a1-a4e0-7c8fe761e766",
+      "name": "Check ReadMeABook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Every 10 minutes: tell Telegram when an audiobook request becomes available (or fails) in ReadMeABook.\nconst TOKEN = $env.HOMELAB_TELEGRAM_BOT_TOKEN, CHAT = String($env.HOMELAB_TELEGRAM_CHAT_ID || '');\nconst RMAB = 'http://192.168.3.201:3050', KEY = $env.HOMELAB_RMAB_TOKEN || '';\nif (!KEY) throw new Error('Set RMAB_TOKEN in docker/n8n/.env (ReadMeABook \u2192 Settings \u2192 API)');\nconst s = $getWorkflowStaticData('global');\nconst get = (status) => this.helpers.httpRequest({ url: `${RMAB}/api/requests`, qs: { status, take: 50 }, headers: { Authorization: `Bearer ${KEY}` }, json: true, timeout: 20000 });\nconst [done, failed] = await Promise.all([get('completed'), get('failed')]);\nconst seen = new Set(s.seen || []);\nconst firstRun = !s.seen;\nconst msgs = [];\nconst label = (r) => `${r.audiobook?.title || 'Unknown title'}${r.audiobook?.author ? ` by ${r.audiobook.author}` : ''}`;\nfor (const r of done.requests || []) {\n  const key = `ok:${r.id}`;\n  if (!seen.has(key)) { seen.add(key); if (!firstRun) msgs.push(`\ud83c\udfa7 Ready in Audiobookshelf: ${label(r)}`); }\n}\nfor (const r of failed.requests || []) {\n  const key = `fail:${r.id}`;\n  if (!seen.has(key)) { seen.add(key); if (!firstRun) msgs.push(`\u26a0\ufe0f Couldn't get ${label(r)}. It will keep retrying daily; check ReadMeABook for details.`); }\n}\ns.seen = [...seen].slice(-500);\nfor (const text of msgs) await this.helpers.httpRequest({ method: 'POST', url: `https://api.telegram.org/bot${TOKEN}/sendMessage`, body: { chat_id: CHAT, text }, json: true });\nreturn msgs.length ? [{ json: { sent: msgs.length } }] : [];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every 10 minutes": {
+      "main": [
+        [
+          {
+            "node": "Check ReadMeABook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Lagos",
+    "saveDataSuccessExecution": "none"
+  },
+  "pinData": {}
+}
