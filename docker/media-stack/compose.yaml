@@ -131,29 +131,18 @@ services:
       - 5299:5299
     restart: unless-stopped
 
-  # Bookshelf (Readarr revival, Hardcover metadata). One instance per book type.
-  bookshelf-audio:
-    image: ghcr.io/pennydreadful/bookshelf:hardcover
-    container_name: bookshelf-audio
+  # Sportarr: Sonarr/Radarr for sports events. Large files: monitor specific teams/events, cap quality.
+  sportarr:
+    image: sportarr/sportarr:latest
+    container_name: sportarr
     environment:
       <<: *common-env
+      UMASK: "022"
     volumes:
-      - ${CONFIG_ROOT}/bookshelf-audio:/config
-      - ${DATA_ROOT}:/data             # root folder: /data/media/audiobooks
+      - ${CONFIG_ROOT}/sportarr:/config
+      - ${DATA_ROOT}:/data             # library: /data/media/sports, downloads: /data/torrents/sports
     ports:
-      - 8787:8787
-    restart: unless-stopped
-
-  bookshelf-ebook:
-    image: ghcr.io/pennydreadful/bookshelf:hardcover
-    container_name: bookshelf-ebook
-    environment:
-      <<: *common-env
-    volumes:
-      - ${CONFIG_ROOT}/bookshelf-ebook:/config
-      - ${DATA_ROOT}:/data             # root folder: /data/media/books-ingest (Calibre-Web Automated)
-    ports:
-      - 8788:8787
+      - 1867:1867
     restart: unless-stopped
 
   # Tailscale entry point for the download apps:
