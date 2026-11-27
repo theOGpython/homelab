@@ -1,0 +1,59 @@
+# =============================================================================
+# Pulse: Proxmox + Docker monitoring with alerts (storage, backups, guests, containers)
+# https://pulse.<tailnet>.ts.net · LAN :7655
+#
+# Upstream: github.com/rcourtman/Pulse. One Go binary with built-in SQLite history.
+# Proxmox is read through a read-only API token; Docker through the Pulse agent
+# installed in CT 201 (no Docker socket mounted here).
+#
+# Usage (inside the "docker" LXC):  bash setup-env.sh && docker compose up -d
+#   then: docker exec pulse /app/pulse bootstrap-token   (one-time admin setup)
+# =============================================================================
+
+name: pulse
+
+services:
+
+  ts-pulse:
+    image: tailscale/tailscale:stable
+    hostname: pulse
+    container_name: ts-pulse
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_HOSTNAME: pulse
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - ${CONFIG_ROOT}/tailscale/pulse:/var/lib/tailscale
+      - ./tailscale/pulse.json:/config/serve.json:ro
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 7655:7655                      # LAN: dashboard + agent reports
+    restart: unless-stopped
+
+  pulse:
+    image: ${PULSE_IMAGE:-rcourtman/pulse:v6.9.0}
+    container_name: pulse
+    network_mode: "service:ts-pulse"
+    environment:
+      PULSE_DEPLOYMENT_METHOD: docker_compose
+      TZ: Africa/Lagos
+    volumes:
+      - pulse_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+    depends_on:
+      - ts-pulse
+    restart: unless-stopped
+
+volumes:
+  pulse_data:
