@@ -278,6 +278,12 @@
         href: https://pulse.tailc33d1b.ts.net
         description: Proxmox & Docker monitoring
         siteMonitor: http://192.168.3.201:7655
+        widget:
+          type: pulse
+          url: http://192.168.3.201:7655
+          key: "{{HOMEPAGE_VAR_PULSE_KEY}}"     # Pulse API token with only the monitoring:read scope
+          version: 2                           # required for Pulse v6
+          fields: ["nodes", "vms", "lxcs"]
     - Uptime Kuma:
         icon: uptime-kuma.svg
         href: https://status.tailc33d1b.ts.net
