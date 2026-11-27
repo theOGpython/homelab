@@ -1,6 +1,42 @@
 # Homepage services. Links use Tailscale addresses (work anywhere); widgets and
 # status checks talk to services over the LAN. Keys come from homepage.secret.
 
+- Media calendar:
+    - Coming up:
+        icon: mdi-calendar-star
+        description: New episodes, movie releases and albums
+        widget:
+          type: calendar
+          view: monthly                # or: agenda (a list instead of a month grid)
+          firstDayInWeek: monday
+          maxEvents: 10
+          showTime: true
+          timezone: Africa/Lagos
+          integrations:
+            - type: sonarr
+              service_group: Downloads
+              service_name: Sonarr
+              color: teal
+              baseUrl: https://arr.tailc33d1b.ts.net:8989
+            - type: radarr
+              service_group: Downloads
+              service_name: Radarr
+              color: amber
+              baseUrl: https://arr.tailc33d1b.ts.net:7878
+            - type: lidarr
+              service_group: Downloads
+              service_name: Lidarr
+              color: green
+              baseUrl: https://arr.tailc33d1b.ts.net:8686
+            # Your own Google Calendar too: Google Calendar → Settings → (your calendar) →
+            # "Secret address in iCal format" → HOMEPAGE_VAR_GCAL_ICS in homepage.secret, then uncomment:
+            # - type: ical
+            #   url: "{{HOMEPAGE_VAR_GCAL_ICS}}"
+            #   name: Calendar
+            #   color: blue
+            #   params:
+            #     showName: false
+
 - Watch & Listen:
     - Jellyfin:
         icon: jellyfin.svg
@@ -237,6 +273,11 @@
           username: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_ID}}"
           password: "{{HOMEPAGE_VAR_PROXMOX_TOKEN_SECRET}}"
           node: pve
+    - Pulse:
+        icon: mdi-heart-pulse
+        href: https://pulse.tailc33d1b.ts.net
+        description: Proxmox & Docker monitoring
+        siteMonitor: http://192.168.3.201:7655
     - Uptime Kuma:
         icon: uptime-kuma.svg
         href: https://status.tailc33d1b.ts.net

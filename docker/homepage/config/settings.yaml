@@ -4,6 +4,9 @@ color: slate
 headerStyle: clean
 statusStyle: dot
 layout:
+  Media calendar:
+    style: row
+    columns: 1
   Watch & Listen:
     style: row
     columns: 3
